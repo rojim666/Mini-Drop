@@ -836,6 +836,7 @@ function ComparePage({
   const diffRows = buildHotspotDiff(baseTask?.result?.hotspots ?? [], targetTask?.result?.hotspots ?? []);
   const canCompare = Boolean(baseTask?.result?.hotspots?.length && targetTask?.result?.hotspots?.length && baseTask.id !== targetTask.id);
   const aggregateRows = buildCrossTaskHotspotAggregate(comparableTasks);
+  const profileRows = buildCrossProfileHotspotAggregate(comparableTasks);
 
   return (
     <div className="page-stack">
@@ -895,6 +896,42 @@ function ComparePage({
                   <td>{row.averagePercent.toFixed(2)}%</td>
                   <td>{row.peakPercent.toFixed(2)}%</td>
                   <td>{row.samples}</td>
+                  <td>
+                    <button type="button" className="inline-action" onClick={() => onOpenTask(row.latestTaskId)}>
+                      {row.latestTaskId}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="console-card">
+        <CardHeader title="跨 profile 热点聚合" />
+        {profileRows.length === 0 ? (
+          <EmptyBlock text="暂无来自连续计划的 TopN 热点，完成连续窗口后可查看跨 profile 聚合。" />
+        ) : (
+          <table className="data-table profile-aggregate-table">
+            <thead>
+              <tr>
+                <th>函数 / 事件</th>
+                <th>覆盖 profile</th>
+                <th>覆盖任务</th>
+                <th>平均占比</th>
+                <th>峰值</th>
+                <th>最近任务</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profileRows.map((row) => (
+                <tr key={row.name}>
+                  <td title={row.name}>{row.name}</td>
+                  <td>{row.profileCount}</td>
+                  <td>{row.taskCount}</td>
+                  <td>{row.averagePercent.toFixed(2)}%</td>
+                  <td>{row.peakPercent.toFixed(2)}%</td>
                   <td>
                     <button type="button" className="inline-action" onClick={() => onOpenTask(row.latestTaskId)}>
                       {row.latestTaskId}
@@ -2174,6 +2211,61 @@ function buildCrossTaskHotspotAggregate(tasks: Task[]) {
       averagePercent: item.totalPercent / item.taskCount,
     }))
     .sort((left, right) => right.peakPercent - left.peakPercent || right.taskCount - left.taskCount)
+    .slice(0, 6);
+}
+
+function buildCrossProfileHotspotAggregate(tasks: Task[]) {
+  const summary = new Map<string, {
+    name: string;
+    profileIds: Set<string>;
+    taskCount: number;
+    totalPercent: number;
+    peakPercent: number;
+    latestTaskId: string;
+    latestCreatedAt: number;
+  }>();
+
+  for (const task of tasks) {
+    if (!task.continuous_profile_id) {
+      continue;
+    }
+    const createdAt = Date.parse(task.created_at) || 0;
+    for (const hotspot of task.result?.hotspots ?? []) {
+      const current = summary.get(hotspot.function);
+      if (!current) {
+        summary.set(hotspot.function, {
+          name: hotspot.function,
+          profileIds: new Set([task.continuous_profile_id]),
+          taskCount: 1,
+          totalPercent: Number(hotspot.percent ?? 0),
+          peakPercent: Number(hotspot.percent ?? 0),
+          latestTaskId: task.id,
+          latestCreatedAt: createdAt,
+        });
+        continue;
+      }
+
+      current.profileIds.add(task.continuous_profile_id);
+      current.taskCount += 1;
+      current.totalPercent += Number(hotspot.percent ?? 0);
+      current.peakPercent = Math.max(current.peakPercent, Number(hotspot.percent ?? 0));
+      if (createdAt >= current.latestCreatedAt) {
+        current.latestTaskId = task.id;
+        current.latestCreatedAt = createdAt;
+      }
+    }
+  }
+
+  return Array.from(summary.values())
+    .map((item) => ({
+      name: item.name,
+      profileCount: item.profileIds.size,
+      taskCount: item.taskCount,
+      averagePercent: item.totalPercent / item.taskCount,
+      peakPercent: item.peakPercent,
+      latestTaskId: item.latestTaskId,
+    }))
+    .sort((left, right) => right.profileCount - left.profileCount || right.peakPercent - left.peakPercent)
     .slice(0, 6);
 }
 

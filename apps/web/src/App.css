@@ -1285,6 +1285,23 @@ button:disabled {
   width: 160px;
 }
 
+.profile-aggregate-table th:nth-child(1),
+.profile-aggregate-table td:nth-child(1) {
+  width: 34%;
+}
+
+.profile-aggregate-table th:nth-child(2),
+.profile-aggregate-table td:nth-child(2),
+.profile-aggregate-table th:nth-child(3),
+.profile-aggregate-table td:nth-child(3) {
+  width: 96px;
+}
+
+.profile-aggregate-table th:nth-child(6),
+.profile-aggregate-table td:nth-child(6) {
+  width: 160px;
+}
+
 .delta-pill {
   min-width: 70px;
   height: 24px;

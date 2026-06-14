@@ -453,6 +453,9 @@ The task comparison page also aggregates TopN hotspots across completed tasks,
 showing recurring functions, coverage, average percent, peak percent, total
 samples, and the latest task link. This gives reviewers a quick cross-task view
 before opening individual flamegraphs.
+For continuous profiling runs, the same page also groups hotspots across
+continuous profile IDs so recurring functions can be separated from a
+single-plan anomaly.
 
 Analyzer writes `perf.script.txt` and `collapsed.txt` for every `perf.data`
 analysis. It uses the built-in stack parser and SVG renderer by default. To use
