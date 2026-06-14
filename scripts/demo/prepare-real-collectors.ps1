@@ -12,11 +12,26 @@ $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $scriptPath = Join-Path $Root "scripts\demo\prepare_real_collectors.py"
 
+function Convert-ToWorkspaceRelativePath {
+    param([string]$PathValue)
+
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return $PathValue
+    }
+
+    $normalizedRoot = $Root.TrimEnd("\", "/")
+    $normalizedPath = $PathValue.Replace("/", "\")
+    if ([System.IO.Path]::IsPathRooted($normalizedPath) -and $normalizedPath.StartsWith($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $normalizedPath.Substring($normalizedRoot.Length).TrimStart("\").Replace("\", "/")
+    }
+    return $PathValue
+}
+
 $arguments = @(
     "--collectors",
     $Collectors,
     "--output",
-    $Output
+    (Convert-ToWorkspaceRelativePath -PathValue $Output)
 )
 
 if ($TargetPid -gt 0) {
