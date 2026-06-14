@@ -438,11 +438,8 @@ func (s *Service) createTask(c *gin.Context) {
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if task.TargetAgentID == "" {
-			var agent minidrop.Agent
-			if err := tx.Where("status = ?", minidrop.AgentStatusOnline).Order("last_heartbeat_at desc").First(&agent).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return errors.New("no online agent available")
-				}
+			agent, err := s.pickAutoTargetAgent(tx)
+			if err != nil {
 				return err
 			}
 			task.TargetAgentID = agent.ID
@@ -596,11 +593,8 @@ func (s *Service) createContinuousProfile(c *gin.Context) {
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if profile.TargetAgentID == "" {
-			var agent minidrop.Agent
-			if err := tx.Where("status = ?", minidrop.AgentStatusOnline).Order("last_heartbeat_at desc").First(&agent).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return errors.New("no online agent available")
-				}
+			agent, err := s.pickAutoTargetAgent(tx)
+			if err != nil {
 				return err
 			}
 			profile.TargetAgentID = agent.ID
@@ -633,6 +627,44 @@ func (s *Service) createContinuousProfile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"profile": s.toContinuousProfilePayload(profile)})
+}
+
+func (s *Service) pickAutoTargetAgent(tx *gorm.DB) (minidrop.Agent, error) {
+	var agents []minidrop.Agent
+	if err := tx.Where("status = ?", minidrop.AgentStatusOnline).
+		Order("last_heartbeat_at desc, id asc").
+		Find(&agents).Error; err != nil {
+		return minidrop.Agent{}, err
+	}
+	if len(agents) == 0 {
+		return minidrop.Agent{}, errors.New("no online agent available")
+	}
+
+	activeStatuses := []minidrop.TaskStatus{
+		minidrop.TaskStatusPending,
+		minidrop.TaskStatusRunning,
+		minidrop.TaskStatusUploading,
+	}
+
+	var (
+		bestAgent minidrop.Agent
+		bestLoad  int64 = -1
+	)
+	for _, agent := range agents {
+		var load int64
+		if err := tx.Model(&minidrop.Task{}).
+			Where("target_agent_id = ? AND status IN ?", agent.ID, activeStatuses).
+			Count(&load).Error; err != nil {
+			return minidrop.Agent{}, err
+		}
+
+		if bestLoad == -1 || load < bestLoad || (load == bestLoad && agent.LastHeartbeatAt.After(bestAgent.LastHeartbeatAt)) || (load == bestLoad && agent.LastHeartbeatAt.Equal(bestAgent.LastHeartbeatAt) && agent.ID < bestAgent.ID) {
+			bestAgent = agent
+			bestLoad = load
+		}
+	}
+
+	return bestAgent, nil
 }
 
 func (s *Service) getContinuousProfile(c *gin.Context) {

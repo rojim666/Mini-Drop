@@ -87,6 +87,63 @@ func TestTaskLifecycleHappyPath(t *testing.T) {
 	}
 }
 
+func TestCreateTaskAutoSelectsLeastBusyAgent(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+	now := time.Now().UTC()
+
+	agents := []minidrop.Agent{
+		{
+			ID:              "agt_busy",
+			Hostname:        "busy-host",
+			IP:              "127.0.0.1",
+			Version:         "0.1.0",
+			Status:          minidrop.AgentStatusOnline,
+			LastHeartbeatAt: now.Add(2 * time.Minute),
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+		{
+			ID:              "agt_idle",
+			Hostname:        "idle-host",
+			IP:              "127.0.0.2",
+			Version:         "0.1.0",
+			Status:          minidrop.AgentStatusOnline,
+			LastHeartbeatAt: now,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}
+	if err := svc.db.Create(&agents).Error; err != nil {
+		t.Fatalf("create agents: %v", err)
+	}
+	if err := svc.db.Create(&minidrop.Task{
+		ID:                "tsk_busy_running",
+		TargetPID:         4321,
+		TargetAgentID:     "agt_busy",
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "mock-perf",
+		Status:            minidrop.TaskStatusRunning,
+		StatusReason:      "busy",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}).Error; err != nil {
+		t.Fatalf("create busy task: %v", err)
+	}
+
+	resp := performJSON(t, router, http.MethodPost, "/api/v1/tasks", map[string]any{
+		"target_pid":          1234,
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+	}, http.StatusCreated)
+	task := resp["task"].(map[string]any)
+	if got := task["target_agent_id"].(string); got != "agt_idle" {
+		t.Fatalf("expected least busy agent, got %s", got)
+	}
+}
+
 func TestCreateTaskValidation(t *testing.T) {
 	input := minidrop.CreateTaskInput{
 		TargetPID:         0,
@@ -502,6 +559,81 @@ func TestCreateContinuousProfileCreatesInitialWindow(t *testing.T) {
 	}
 	if got := summary["latest_status"].(string); got != string(minidrop.TaskStatusPending) {
 		t.Fatalf("expected latest pending status, got %s", got)
+	}
+}
+
+func TestCreateContinuousProfileAutoSelectsLeastBusyAgent(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+	now := time.Now().UTC()
+
+	agents := []minidrop.Agent{
+		{
+			ID:              "agt_schedule_busy",
+			Hostname:        "busy-host",
+			IP:              "127.0.0.1",
+			Version:         "0.1.0",
+			Status:          minidrop.AgentStatusOnline,
+			LastHeartbeatAt: now.Add(2 * time.Minute),
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+		{
+			ID:              "agt_schedule_idle",
+			Hostname:        "idle-host",
+			IP:              "127.0.0.2",
+			Version:         "0.1.0",
+			Status:          minidrop.AgentStatusOnline,
+			LastHeartbeatAt: now,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}
+	if err := svc.db.Create(&agents).Error; err != nil {
+		t.Fatalf("create agents: %v", err)
+	}
+	if err := svc.db.Create(&minidrop.Task{
+		ID:                "tsk_schedule_busy_running",
+		TargetPID:         4321,
+		TargetAgentID:     "agt_schedule_busy",
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "mock-perf",
+		Status:            minidrop.TaskStatusRunning,
+		StatusReason:      "busy",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}).Error; err != nil {
+		t.Fatalf("create busy task: %v", err)
+	}
+
+	resp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles", map[string]any{
+		"name":                "auto scheduled window",
+		"target_pid":          4321,
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+		"interval_sec":        300,
+	}, http.StatusCreated)
+	profile := resp["profile"].(map[string]any)
+	if got := profile["target_agent_id"].(string); got != "agt_schedule_idle" {
+		t.Fatalf("expected least busy profile agent, got %s", got)
+	}
+
+	tasksResp := performJSON(t, router, http.MethodGet, "/api/v1/tasks", nil, http.StatusOK)
+	tasks := tasksResp["tasks"].([]any)
+	foundInitialWindowTask := false
+	for _, item := range tasks {
+		task := item.(map[string]any)
+		if taskProfileID, ok := task["continuous_profile_id"].(string); ok && taskProfileID == profile["id"].(string) {
+			foundInitialWindowTask = true
+			if got := task["target_agent_id"].(string); got != "agt_schedule_idle" {
+				t.Fatalf("expected least busy window task agent, got %s", got)
+			}
+		}
+	}
+	if !foundInitialWindowTask {
+		t.Fatal("expected initial continuous window task")
 	}
 }
 

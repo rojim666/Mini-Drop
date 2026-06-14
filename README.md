@@ -431,6 +431,9 @@ For a Windows-safe demo, choose `collector_type=mock-perf`, enter the printed
 mock target PID, and keep the default `5 分钟` interval. The first window is
 created immediately so the demo does not need to wait five minutes; later
 windows are scheduled by the API background scanner and the Agent polling loop.
+When the target agent is left blank, the API assigns the task or continuous
+profile to the online Agent with the fewest active tasks, which keeps the demo
+usable when multiple Agents are running.
 
 ### Attribution mini-loop
 

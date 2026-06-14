@@ -1512,7 +1512,7 @@ function TaskForm({
             setTaskInput((current) => ({ ...current, target_agent_id: event.target.value || undefined }))
           }
         >
-          <option value="">自动选择在线机器</option>
+          <option value="">自动选择空闲在线机器</option>
           {agents.map((agent) => (
             <option key={agent.id} value={agent.id}>
               {agent.hostname} / {agent.ip} / {agent.status}
