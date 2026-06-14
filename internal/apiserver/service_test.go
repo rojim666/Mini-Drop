@@ -293,11 +293,34 @@ func TestTaskResultsIncludeRuleAttribution(t *testing.T) {
 	if len(evidence) < 3 {
 		t.Fatalf("expected attribution evidence, got %d items", len(evidence))
 	}
+	foundTimeline := false
+	for _, item := range evidence {
+		row := item.(map[string]any)
+		if row["kind"] == "resource_timeline" {
+			foundTimeline = true
+			if !strings.Contains(row["detail"].(string), "CPU") {
+				t.Fatalf("expected resource timeline detail to mention CPU alignment, got %+v", row)
+			}
+		}
+	}
+	if !foundTimeline {
+		t.Fatalf("expected resource timeline evidence, got %+v", evidence)
+	}
 	trace := attribution["tool_trace"].([]any)
-	if len(trace) < 3 {
+	if len(trace) < 4 {
 		t.Fatalf("expected attribution tool trace, got %d items", len(trace))
 	}
-	if prompt := attribution["prompt"].(string); !strings.Contains(prompt, taskID) {
+	foundTimelineTool := false
+	for _, item := range trace {
+		row := item.(map[string]any)
+		if row["name"] == "get_resource_timeline" {
+			foundTimelineTool = true
+		}
+	}
+	if !foundTimelineTool {
+		t.Fatalf("expected get_resource_timeline tool trace, got %+v", trace)
+	}
+	if prompt := attribution["prompt"].(string); !strings.Contains(prompt, taskID) || !strings.Contains(prompt, "timeline=") {
 		t.Fatalf("expected prompt to reference task id, got %q", prompt)
 	}
 
@@ -405,7 +428,16 @@ func TestBuildAttributionIncludesBaselineEvidence(t *testing.T) {
 	if !foundBaseline {
 		t.Fatalf("expected baseline evidence, got %+v", got.Evidence)
 	}
-	if !strings.Contains(got.Prompt, "baseline=storage baseline") {
+	foundTimeline := false
+	for _, item := range got.Evidence {
+		if item.Kind == "resource_timeline" && strings.Contains(item.Detail, "IO/storage") {
+			foundTimeline = true
+		}
+	}
+	if !foundTimeline {
+		t.Fatalf("expected IO resource timeline evidence, got %+v", got.Evidence)
+	}
+	if !strings.Contains(got.Prompt, "baseline=storage baseline") || !strings.Contains(got.Prompt, "timeline=io_pressure") {
 		t.Fatalf("expected prompt to include baseline summary, got %q", got.Prompt)
 	}
 }

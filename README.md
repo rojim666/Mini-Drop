@@ -423,7 +423,10 @@ the Web detail page can show a reproducible "归因建议" tab.
 This is intentionally not a remote LLM call yet. The prompt and tool trace are
 persisted in SQLite as the auditable contract that a later LLM loop can reuse.
 The built-in tools are `get_top_hotspots(task_id)`,
-`match_hotspot_rules(topn)`, and `compare_with_baseline(task_id)`.
+`match_hotspot_rules(topn)`, `compare_with_baseline(task_id)`, and
+`get_resource_timeline(task_id)`. The resource timeline tool currently produces
+deterministic demo evidence for CPU / IO / memory / wait alignment; it is the
+contract that a later real metrics source can replace.
 
 Analyzer writes `perf.script.txt` and `collapsed.txt` for every `perf.data`
 analysis. It uses the built-in stack parser and SVG renderer by default. To use
@@ -495,7 +498,7 @@ The repository still follows the documented roadmap:
 
 1. Run the real collector smoke helpers in WSL2 / Ubuntu to validate kernel permissions.
 2. Validate the optional standard FlameGraph scripts in the WSL2 / Linux demo path.
-3. Replace the deterministic attribution loop with a remote LLM call plus resource timeline tools.
+3. Replace the deterministic attribution loop with a remote LLM call and wire `get_resource_timeline` to real metrics.
 4. Replace the minimal continuous profiling scheduler with a full cron/baseline implementation.
 
 ## Acceptance Status

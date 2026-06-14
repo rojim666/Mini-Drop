@@ -11,6 +11,10 @@ step must obey:
   runtime/scheduler, IO/storage, allocation, or mixed CPU paths.
 - `compare_with_baseline(task_id)` compares the top hotspot with seeded baseline
   rows.
+- `get_resource_timeline(task_id)` produces a deterministic resource-timeline
+  summary for the sampling window, keyed by collector type and hotspot
+  classification. This is the replaceable contract for later real CPU / IO /
+  memory / wait timeline data.
 
 Every result is persisted in SQLite as `attribution_results`, including
 conclusion, confidence, evidence, recommendations, source metadata, prompt text,
@@ -44,7 +48,8 @@ Automated tests cover:
 
 - Baselines are seeded demo rows, not historical production aggregates.
 - The prompt is recorded but not sent to a remote LLM.
-- The tool set does not yet include resource timeline comparison.
+- Resource timeline data is deterministic demo evidence, not real node metrics
+  yet.
 - The evaluator checks deterministic rule behavior, not natural-language
   answer quality.
 
@@ -57,5 +62,5 @@ go test ./internal/apiserver
 ```
 
 The tests verify that attribution is returned from task results, persisted on
-first read, reused on later reads, includes a tool trace, and can include
-baseline evidence.
+first read, reused on later reads, includes a tool trace, includes resource
+timeline evidence, and can include baseline evidence.

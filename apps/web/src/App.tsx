@@ -1617,7 +1617,7 @@ function AttributionPanel({ attribution }: { attribution: NonNullable<Task["resu
             <tbody>
               {attribution.evidence.map((item, index) => (
                 <tr key={`${item.kind}-${index}`}>
-                  <td>{item.kind}</td>
+                  <td>{evidenceKindText(item.kind)}</td>
                   <td>{item.detail}</td>
                   <td>{item.function ?? "-"}</td>
                   <td>{typeof item.percent === "number" ? `${item.percent}%` : "-"}</td>
@@ -1757,6 +1757,19 @@ function statusText(value: string) {
     UPLOADING: "上传中",
     DONE: "已完成",
     FAILED: "失败",
+  };
+  return map[value] ?? value;
+}
+
+function evidenceKindText(value: string) {
+  const map: Record<string, string> = {
+    top_hotspot: "Top 热点",
+    supporting_hotspot: "辅助热点",
+    baseline: "历史 baseline",
+    resource_timeline: "资源时间线",
+    rule_match: "规则命中",
+    sampling: "采样参数",
+    topn: "TopN",
   };
   return map[value] ?? value;
 }

@@ -30,6 +30,13 @@ type baselineComparison struct {
 	DeltaPercent    float64
 }
 
+type resourceTimelineComparison struct {
+	Signal      string
+	Summary     string
+	Alignment   string
+	PeakPercent float64
+}
+
 func buildAttribution(task minidrop.Task, topNPath string, hotspots []hotspotPayload) *attributionPayload {
 	return buildAttributionWithBaselines(task, topNPath, hotspots, nil)
 }
@@ -58,7 +65,7 @@ func (runner *attributionToolRunner) build(task minidrop.Task, topNPath string, 
 			Recommendations: []string{"重新采集更长的采样窗口，或确认目标进程在采样期间有 CPU 活动。"},
 			Source:          source,
 			ToolTrace:       runner.trace,
-			Prompt:          attributionPrompt(task, hotspots, nil),
+			Prompt:          attributionPrompt(task, hotspots, nil, nil),
 		}
 	}
 
@@ -83,6 +90,7 @@ func (runner *attributionToolRunner) build(task minidrop.Task, topNPath string, 
 
 	rule := runner.matchRules(hotspots)
 	baseline := runner.compareBaseline(task, hotspots)
+	timeline := runner.getResourceTimeline(task, hotspots, rule.Classification)
 	classification := rule.Classification
 	conclusion := "CPU 热点较分散，需要结合火焰图继续定位调用路径"
 	recommendations := []string{
@@ -135,6 +143,14 @@ func (runner *attributionToolRunner) build(task minidrop.Task, topNPath string, 
 		}
 	}
 
+	evidence = append(evidence, attributionEvidencePayload{
+		Kind:     "resource_timeline",
+		Detail:   timeline.Summary,
+		Function: top.Function,
+		Percent:  timeline.PeakPercent,
+	})
+	recommendations = append(recommendations, timelineRecommendation(timeline.Signal))
+
 	if classification != "single" {
 		evidence = append(evidence, attributionEvidencePayload{
 			Kind:   "rule_match",
@@ -153,7 +169,7 @@ func (runner *attributionToolRunner) build(task minidrop.Task, topNPath string, 
 		Recommendations: recommendations,
 		Source:          source,
 		ToolTrace:       runner.trace,
-		Prompt:          attributionPrompt(task, hotspots, &baseline),
+		Prompt:          attributionPrompt(task, hotspots, &baseline, &timeline),
 	}
 }
 
@@ -196,11 +212,99 @@ func (runner *attributionToolRunner) compareBaseline(task minidrop.Task, hotspot
 	return baselineComparison{}
 }
 
+func (runner *attributionToolRunner) getResourceTimeline(task minidrop.Task, hotspots []hotspotPayload, classification string) resourceTimelineComparison {
+	top := hotspots[0]
+	duration := task.SampleDurationSec
+	if duration <= 0 {
+		duration = 1
+	}
+
+	timeline := resourceTimelineComparison{
+		Signal:      "cpu_hotspot",
+		Alignment:   "cpu",
+		PeakPercent: roundFloat(top.Percent, 1),
+		Summary: fmt.Sprintf(
+			"%ds 采样窗口内 CPU 热点与 %s 对齐，Top1 占 %.1f%%",
+			duration,
+			top.Function,
+			top.Percent,
+		),
+	}
+
+	switch classification {
+	case "runtime":
+		timeline.Signal = "scheduler_wait"
+		timeline.Alignment = "runtime/scheduler"
+		timeline.Summary = fmt.Sprintf(
+			"%ds 采样窗口内热点集中在 runtime/scheduler，疑似等待或调度时间线与 TopN 对齐",
+			duration,
+		)
+	case "io":
+		timeline.Signal = "io_pressure"
+		timeline.Alignment = "io/storage"
+		timeline.Summary = fmt.Sprintf(
+			"%ds 采样窗口内 IO/storage 热点占 %.1f%%，建议对齐磁盘、网络或数据库时间线",
+			duration,
+			top.Percent,
+		)
+	case "alloc":
+		timeline.Signal = "memory_pressure"
+		timeline.Alignment = "allocation/gc"
+		timeline.Summary = fmt.Sprintf(
+			"%ds 采样窗口内分配/内存管理热点占 %.1f%%，建议对齐 alloc、GC 或 RSS 时间线",
+			duration,
+			top.Percent,
+		)
+	case "mixed":
+		timeline.Signal = "mixed_cpu"
+		timeline.Alignment = "mixed"
+		timeline.Summary = fmt.Sprintf(
+			"%ds 采样窗口内热点分散，资源时间线需要同时对齐 CPU、IO 和等待指标",
+			duration,
+		)
+	}
+
+	if task.CollectorType == minidrop.CollectorEBPFSyscall {
+		timeline.Signal = "syscall_pressure"
+		timeline.Alignment = "syscall"
+		timeline.Summary = fmt.Sprintf(
+			"%ds eBPF syscall 窗口内 %s 占 %.1f%%，优先对齐系统调用频率时间线",
+			duration,
+			top.Function,
+			top.Percent,
+		)
+	}
+
+	runner.recordTool(
+		"get_resource_timeline",
+		fmt.Sprintf("task_id=%s collector=%s window=%ds classification=%s", task.ID, task.CollectorType, duration, classification),
+		fmt.Sprintf("%s: %s", timeline.Signal, timeline.Summary),
+	)
+	return timeline
+}
+
+func timelineRecommendation(signal string) string {
+	switch signal {
+	case "scheduler_wait":
+		return "把 runtime/scheduler 热点与线程、协程、锁等待或 run queue 时间线对齐，确认是否存在等待放大。"
+	case "io_pressure":
+		return "把 IO/storage 热点与磁盘、网络、数据库请求量和延迟时间线对齐，确认瓶颈是否来自外部资源。"
+	case "memory_pressure":
+		return "把分配热点与 alloc、GC、RSS 或对象数量时间线对齐，确认是否存在分配速率突增。"
+	case "syscall_pressure":
+		return "把 syscall 分布与系统调用频率时间线对齐，确认是否存在读写、同步或轮询调用放大。"
+	case "mixed_cpu":
+		return "资源时间线应同时检查 CPU、IO 和等待指标，避免只按单个热点过早归因。"
+	default:
+		return "把 CPU 利用率时间线与 TopN 热点窗口对齐，确认热点是否稳定出现在采样峰值附近。"
+	}
+}
+
 func (runner *attributionToolRunner) recordTool(name, input, output string) {
 	runner.trace = append(runner.trace, attributionToolCallPayload{Name: name, Input: input, Output: output})
 }
 
-func attributionPrompt(task minidrop.Task, hotspots []hotspotPayload, baseline *baselineComparison) string {
+func attributionPrompt(task minidrop.Task, hotspots []hotspotPayload, baseline *baselineComparison, timeline *resourceTimelineComparison) string {
 	top := "none"
 	if len(hotspots) > 0 {
 		top = fmt.Sprintf("%s %.1f%%", hotspots[0].Function, hotspots[0].Percent)
@@ -209,14 +313,19 @@ func attributionPrompt(task minidrop.Task, hotspots []hotspotPayload, baseline *
 	if baseline != nil && baseline.Matched {
 		baselineText = fmt.Sprintf("%s actual=%.1f expected=%.1f delta=%.1f", baseline.Description, baseline.ActualPercent, baseline.ExpectedPercent, baseline.DeltaPercent)
 	}
+	timelineText := "none"
+	if timeline != nil {
+		timelineText = fmt.Sprintf("%s alignment=%s peak=%.1f", timeline.Signal, timeline.Alignment, timeline.PeakPercent)
+	}
 	return fmt.Sprintf(
-		"Use only tool evidence to attribute task %s. collector=%s sample=%dHz/%ds top=%s baseline=%s",
+		"Use only tool evidence to attribute task %s. collector=%s sample=%dHz/%ds top=%s baseline=%s timeline=%s",
 		task.ID,
 		task.CollectorType,
 		task.SampleRateHz,
 		task.SampleDurationSec,
 		top,
 		baselineText,
+		timelineText,
 	)
 }
 
