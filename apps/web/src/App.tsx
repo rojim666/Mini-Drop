@@ -1314,6 +1314,7 @@ function TrendPanel({
                 <th>平均占比</th>
                 <th>峰值</th>
                 <th>变化量</th>
+                <th>基线偏差</th>
                 <th>趋势</th>
               </tr>
             </thead>
@@ -1331,6 +1332,9 @@ function TrendPanel({
                   <td className={series.delta >= 0 ? "trend-positive" : "trend-negative"}>
                     {series.delta >= 0 ? "+" : ""}
                     {series.delta.toFixed(1)}%
+                  </td>
+                  <td>
+                    <BaselineBadge series={series} />
                   </td>
                   <td>
                     <div className="trend-sparkline">
@@ -1353,6 +1357,21 @@ function TrendPanel({
         </div>
       )}
     </div>
+  );
+}
+
+function BaselineBadge({ series }: { series: ContinuousTrend["series"][number] }) {
+  if (!series.baseline) {
+    return <span className="baseline-badge none">无基线</span>;
+  }
+
+  const delta = series.baseline.delta_percent;
+  const title = `${series.baseline.description}：峰值 ${series.baseline.actual_percent.toFixed(1)}%，基线 ${series.baseline.expected_percent.toFixed(1)}%。${series.baseline.reason}`;
+  return (
+    <span className={`baseline-badge ${series.baseline.status}`} title={title}>
+      {delta >= 0 ? "+" : ""}
+      {delta.toFixed(1)}%
+    </span>
   );
 }
 

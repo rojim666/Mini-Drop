@@ -1139,8 +1139,8 @@ button:disabled {
   width: 28%;
 }
 
-.trend-table th:nth-child(6),
-.trend-table td:nth-child(6) {
+.trend-table th:nth-child(7),
+.trend-table td:nth-child(7) {
   width: 240px;
 }
 
@@ -1179,6 +1179,44 @@ button:disabled {
   color: var(--tc-text-soft);
   border-color: var(--tc-border);
   background: #f7f9fc;
+}
+
+.baseline-badge {
+  min-width: 66px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--tc-border);
+  background: #f7f9fc;
+  color: var(--tc-text-soft);
+  padding: 0 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.baseline-badge.above {
+  color: var(--tc-red);
+  border-color: #ffd4d0;
+  background: #fff5f4;
+}
+
+.baseline-badge.below {
+  color: var(--tc-green);
+  border-color: #bdebdc;
+  background: #f0fbf6;
+}
+
+.baseline-badge.within {
+  color: var(--tc-blue-hover);
+  border-color: #c9ddff;
+  background: #f4f8ff;
+}
+
+.baseline-badge.none {
+  color: var(--tc-muted);
+  border-color: var(--tc-border-soft);
+  background: #ffffff;
 }
 
 .trend-positive {

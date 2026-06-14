@@ -419,6 +419,10 @@ the same function is rising, falling, staying stable, or sitting in a high-risk
 band across windows.
 The trend payload now also includes a deterministic label and reason so the Web
 page can flag sustained high-peak hotspots without a separate heuristic layer.
+Each trend series is also compared with the seeded attribution baselines when a
+collector/function match exists; the API returns the expected percent, actual
+peak, delta, and status so the Web page can show baseline drift directly in the
+continuous profiling table.
 Continuous profiles can also be paused and resumed from the plan page; the API
 persists an audit log for each lifecycle change while keeping existing windows
 available for review.

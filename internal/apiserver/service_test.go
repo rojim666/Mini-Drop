@@ -782,7 +782,7 @@ func TestContinuousProfileTrendsAggregateTopNWindows(t *testing.T) {
 	})
 	oldTopNPath := writeTestTopN(t, svc, "tsk_trend_old", []hotspotPayload{
 		{Function: "main.expensiveLoop", Samples: 40, Percent: 30.0},
-		{Function: "storage.writeArtifacts", Samples: 25, Percent: 20.0},
+		{Function: "storage.writeArtifacts", Samples: 25, Percent: 42.0},
 	})
 
 	results := []minidrop.AnalysisResult{
@@ -838,6 +838,31 @@ func TestContinuousProfileTrendsAggregateTopNWindows(t *testing.T) {
 	points := first["points"].([]any)
 	if got := points[0].(map[string]any)["percent"].(float64); got != 70 {
 		t.Fatalf("expected newest percent 70, got %v", got)
+	}
+
+	var storageSeries map[string]any
+	for _, item := range series {
+		seriesItem := item.(map[string]any)
+		if seriesItem["function"].(string) == "storage.writeArtifacts" {
+			storageSeries = seriesItem
+			break
+		}
+	}
+	if storageSeries == nil {
+		t.Fatalf("expected storage trend series, got %+v", series)
+	}
+	baseline := storageSeries["baseline"].(map[string]any)
+	if got := baseline["status"].(string); got != "above" {
+		t.Fatalf("expected storage trend above baseline, got %s", got)
+	}
+	if got := baseline["expected_percent"].(float64); got != 12 {
+		t.Fatalf("expected storage baseline 12, got %v", got)
+	}
+	if got := baseline["actual_percent"].(float64); got != 42 {
+		t.Fatalf("expected storage peak 42, got %v", got)
+	}
+	if got := baseline["delta_percent"].(float64); got != 30 {
+		t.Fatalf("expected storage baseline delta 30, got %v", got)
 	}
 
 	performJSON(t, router, http.MethodGet, "/api/v1/continuous-profiles/"+profileID+"/trends?limit=bogus", nil, http.StatusBadRequest)

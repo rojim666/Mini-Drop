@@ -164,6 +164,15 @@ export interface ContinuousTrendPoint {
   samples: number;
 }
 
+export interface ContinuousTrendBaseline {
+  status: "above" | "within" | "below";
+  description: string;
+  expected_percent: number;
+  actual_percent: number;
+  delta_percent: number;
+  reason: string;
+}
+
 export interface ContinuousTrendSeries {
   function: string;
   average: number;
@@ -172,6 +181,7 @@ export interface ContinuousTrendSeries {
   label: string;
   severity: "critical" | "warning" | "success" | "normal";
   reason: string;
+  baseline?: ContinuousTrendBaseline;
   points: ContinuousTrendPoint[];
 }
 

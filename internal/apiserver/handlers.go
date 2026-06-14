@@ -109,15 +109,25 @@ type continuousTrendPointPayload struct {
 	Samples  int     `json:"samples"`
 }
 
+type continuousTrendBaselinePayload struct {
+	Status          string  `json:"status"`
+	Description     string  `json:"description"`
+	ExpectedPercent float64 `json:"expected_percent"`
+	ActualPercent   float64 `json:"actual_percent"`
+	DeltaPercent    float64 `json:"delta_percent"`
+	Reason          string  `json:"reason"`
+}
+
 type continuousTrendSeriesPayload struct {
-	Function string                        `json:"function"`
-	Average  float64                       `json:"average"`
-	Peak     float64                       `json:"peak"`
-	Delta    float64                       `json:"delta"`
-	Label    string                        `json:"label"`
-	Severity string                        `json:"severity"`
-	Reason   string                        `json:"reason"`
-	Points   []continuousTrendPointPayload `json:"points"`
+	Function string                          `json:"function"`
+	Average  float64                         `json:"average"`
+	Peak     float64                         `json:"peak"`
+	Delta    float64                         `json:"delta"`
+	Label    string                          `json:"label"`
+	Severity string                          `json:"severity"`
+	Reason   string                          `json:"reason"`
+	Baseline *continuousTrendBaselinePayload `json:"baseline,omitempty"`
+	Points   []continuousTrendPointPayload   `json:"points"`
 }
 
 type continuousTrendPayload struct {
@@ -1310,8 +1320,9 @@ func (s *Service) getContinuousProfileTrends(c *gin.Context) {
 
 	// Load top hotspots for each completed window and build a compact cross-window trend.
 	type windowHotspots struct {
-		window   minidrop.ContinuousProfileWindow
-		hotspots []hotspotPayload
+		window        minidrop.ContinuousProfileWindow
+		collectorType string
+		hotspots      []hotspotPayload
 	}
 	records := make([]windowHotspots, 0, len(windows))
 	functionOrder := make([]string, 0, 8)
@@ -1335,7 +1346,7 @@ func (s *Service) getContinuousProfileTrends(c *gin.Context) {
 			continue
 		}
 
-		records = append(records, windowHotspots{window: window, hotspots: hotspots})
+		records = append(records, windowHotspots{window: window, collectorType: task.CollectorType, hotspots: hotspots})
 		for _, hotspot := range hotspots {
 			if !functionSeen[hotspot.Function] {
 				functionSeen[hotspot.Function] = true
@@ -1352,8 +1363,14 @@ func (s *Service) getContinuousProfileTrends(c *gin.Context) {
 		functionOrder = functionOrder[:5]
 	}
 
+	var baselines []minidrop.AttributionBaseline
+	if err := s.db.Order("collector_type asc, function_pattern asc").Find(&baselines).Error; err != nil {
+		s.log.Warn("load trend baselines failed", "profile_id", c.Param("id"), "error", err)
+	}
+
 	windowsPayload := make([]continuousTrendWindowPayload, 0, len(records))
 	seriesMap := make(map[string][]continuousTrendPointPayload, len(functionOrder))
+	collectorByFunction := make(map[string]string, len(functionOrder))
 	for _, function := range functionOrder {
 		seriesMap[function] = []continuousTrendPointPayload{}
 	}
@@ -1374,6 +1391,9 @@ func (s *Service) getContinuousProfileTrends(c *gin.Context) {
 
 		for _, function := range functionOrder {
 			hotspot := hotspotMap[function]
+			if hotspot.Function != "" && collectorByFunction[function] == "" {
+				collectorByFunction[function] = record.collectorType
+			}
 			seriesMap[function] = append(seriesMap[function], continuousTrendPointPayload{
 				WindowID: record.window.ID,
 				TaskID:   record.window.TaskID,
@@ -1411,6 +1431,7 @@ func (s *Service) getContinuousProfileTrends(c *gin.Context) {
 			Label:    label,
 			Severity: severity,
 			Reason:   reason,
+			Baseline: trendBaselineForFunction(collectorByFunction[function], function, peak, baselines),
 			Points:   points,
 		})
 	}
@@ -1419,6 +1440,40 @@ func (s *Service) getContinuousProfileTrends(c *gin.Context) {
 		"windows": windowsPayload,
 		"series":  seriesPayload,
 	})
+}
+
+func trendBaselineForFunction(collectorType string, function string, peakPercent float64, baselines []minidrop.AttributionBaseline) *continuousTrendBaselinePayload {
+	for _, baseline := range baselines {
+		if baseline.CollectorType != "" && baseline.CollectorType != collectorType {
+			continue
+		}
+		if !strings.Contains(strings.ToLower(function), strings.ToLower(baseline.FunctionPattern)) {
+			continue
+		}
+
+		delta := roundFloat(peakPercent-baseline.ExpectedPercent, 1)
+		status := "within"
+		reason := "峰值与历史 baseline 偏差在 10 个百分点以内"
+		switch {
+		case delta >= 10:
+			status = "above"
+			reason = "峰值高于历史 baseline 10 个百分点以上"
+		case delta <= -10:
+			status = "below"
+			reason = "峰值低于历史 baseline 10 个百分点以上"
+		}
+
+		return &continuousTrendBaselinePayload{
+			Status:          status,
+			Description:     baseline.Description,
+			ExpectedPercent: roundFloat(baseline.ExpectedPercent, 1),
+			ActualPercent:   roundFloat(peakPercent, 1),
+			DeltaPercent:    delta,
+			Reason:          reason,
+		}
+	}
+
+	return nil
 }
 
 func classifyTrend(peak, delta float64) (string, string, string) {

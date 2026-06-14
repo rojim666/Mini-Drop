@@ -191,14 +191,14 @@ make smoke-real COLLECTOR_TYPE=py-spy
 - Web 提供可点击窗口时间轴条，点击任一窗口可回溯到其 materialized task 详情。
 - API 聚合最近完成窗口的 TopN 热点趋势，Web 在计划页展示跨窗口函数占比、峰值和变化量。
 - API 为趋势结果补充确定性自动标注与原因，Web 直接标出持续高位、明显升高或回落。
+- API 为趋势结果接入 seeded baseline 对比，Web 直接展示基线偏差。
 - API 和 Web 支持 continuous profile 启用/停用，并写入审计日志，停用后不再调度新窗口。
 
-当前状态：已完成最小版，并补齐窗口聚合摘要、筛选、可点击时间轴、跨窗口热点趋势、自动标注和 profile 生命周期控制。
+当前状态：已完成最小版，并补齐窗口聚合摘要、筛选、可点击时间轴、跨窗口热点趋势、自动标注、baseline 对比和 profile 生命周期控制。
 
 下一步增强：
 
 - 增加 cron / 错峰 / 多 Agent 调度策略。
-- 增加 baseline 对比。
 - 增加更细的趋势阈值和跨任务聚合视图。
 
 ## 阶段 9：智能归因
