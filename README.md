@@ -72,10 +72,15 @@ workload for the end-to-end flow.
 To verify the compose stack from the command line:
 
 ```bash
+make compose-health
 make smoke-demo
 make smoke-demo-fail
 make smoke-demo-offline
 ```
+
+`make compose-health` verifies that PostgreSQL, MinIO, API Server, Web, Agent,
+and the bundled demo target are running, and that the published API/Web/MinIO
+ports match the current demo configuration.
 
 To write the coverage evidence required by the engineering baseline:
 
@@ -121,6 +126,7 @@ For the recommended 10 to 15 minute recording flow, use the final demo script:
 On Windows PowerShell without `make`, run the helper directly:
 
 ```powershell
+.\scripts\demo\check-compose-stack.ps1
 .\scripts\demo\acceptance-snapshot.ps1
 .\scripts\demo\write-recording-checklist.ps1
 .\scripts\demo\write-submission-notes.ps1
@@ -130,6 +136,7 @@ On Windows PowerShell without `make`, run the helper directly:
 For an alternate-port compose stack:
 
 ```powershell
+.\scripts\demo\check-compose-stack.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
 .\scripts\demo\acceptance-snapshot.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
 .\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
 ```
@@ -137,6 +144,7 @@ For an alternate-port compose stack:
 On Linux / WSL2 without `make`, use the Bash helper:
 
 ```bash
+bash ./scripts/demo/check-compose-stack.sh
 bash ./scripts/demo/acceptance-snapshot.sh
 ```
 

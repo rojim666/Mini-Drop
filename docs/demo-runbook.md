@@ -71,6 +71,7 @@ make smoke-demo
 make smoke-demo-minio
 make smoke-demo-fail
 make smoke-demo-offline
+make compose-health
 make acceptance-snapshot
 make demo-evidence
 make recording-checklist
@@ -82,6 +83,9 @@ make demo-down
 
 `make demo` starts the stack and performs the MinIO signed URL smoke test.
 `make demo-up` only starts the stack.
+`make compose-health` verifies the six compose services and host port mappings
+before recording, so a half-started stack is caught before Web/API evidence is
+collected.
 `make demo-evidence` writes `artifacts/demo-evidence.md` from the currently
 running API/Web/Git state so the final recording has a reproducible evidence
 summary. To include WSL2 / Linux real-collector prerequisite evidence, run:
@@ -104,6 +108,7 @@ coverage gates used by the final preflight.
 On Windows without `make`, use the PowerShell snapshot helper directly:
 
 ```powershell
+.\scripts\demo\check-compose-stack.ps1
 .\scripts\demo\acceptance-snapshot.ps1
 .\scripts\demo\write-demo-evidence.ps1
 .\scripts\demo\write-recording-checklist.ps1
@@ -116,6 +121,7 @@ If compose is running on alternate ports, pass the same ports to the snapshot
 and evidence helpers:
 
 ```powershell
+.\scripts\demo\check-compose-stack.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
 .\scripts\demo\acceptance-snapshot.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
 .\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
 .\scripts\demo\write-recording-checklist.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
@@ -126,6 +132,7 @@ and evidence helpers:
 On Linux / WSL2 without `make`, use the Bash helper:
 
 ```bash
+bash ./scripts/demo/check-compose-stack.sh
 bash ./scripts/demo/acceptance-snapshot.sh
 bash ./scripts/demo/write-demo-evidence.sh
 bash ./scripts/demo/write-demo-evidence.sh --include-real-preflight
@@ -215,6 +222,7 @@ temporary `kernel.yama.ptrace_scope` adjustment.
 ## 4. Acceptance Checklist
 
 - Compose starts with PostgreSQL, MinIO, API, Agent, Web, and `demo-target`.
+- `make compose-health` reports `compose_stack=OK` with expected port mappings.
 - A mock task reaches `PENDING -> RUNNING -> UPLOADING -> DONE`.
 - `flamegraph_url` and `topn_url` contain `X-Amz-Signature` and the configured MinIO public port.
 - Web task detail can load the flamegraph SVG.

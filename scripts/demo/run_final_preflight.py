@@ -36,6 +36,7 @@ PYTHON_SYNTAX_FILES = [
     "scripts/demo/run_final_preflight.py",
     "scripts/demo/check_coverage.py",
     "scripts/demo/demo_diagnostics.py",
+    "scripts/demo/check_compose_stack.py",
 ]
 
 
@@ -376,6 +377,26 @@ def main() -> int:
         )
 
     if not args.skip_live:
+        results.append(
+            run_command(
+                "Compose stack health",
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "demo" / "check_compose_stack.py"),
+                    "--api-port",
+                    str(args.api_port),
+                    "--web-port",
+                    str(args.web_port),
+                    "--minio-port",
+                    str(args.minio_port),
+                    "--minio-console-port",
+                    str(args.minio_console_port),
+                ],
+                required=True,
+                env=env,
+                timeout=60,
+            )
+        )
         if args.seed_tasks:
             results.append(seed_acceptance_tasks(args.seed_task_count, args.target_pid, args.agent_id, env))
         results.append(

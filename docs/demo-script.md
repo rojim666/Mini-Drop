@@ -16,6 +16,7 @@ running:
 Generate acceptance and evidence output:
 
 ```powershell
+.\scripts\demo\check-compose-stack.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
 .\scripts\demo\acceptance-snapshot.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -SeedTasks
 .\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -IncludeRealPreflight
 .\scripts\demo\write-recording-checklist.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
@@ -178,6 +179,7 @@ make smoke-real COLLECTOR_TYPE=py-spy
 
 Before finishing, show or mention:
 
+- `compose_stack=OK` from `check-compose-stack`.
 - `acceptance=OK` from `acceptance-snapshot`.
 - `continuous_profiles` and `continuous_profile_samples` lines from
   `acceptance-snapshot`, including each profile's schedule policy.

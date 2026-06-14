@@ -1,4 +1,4 @@
-.PHONY: help demo demo-up demo-down local local-down test build web-build coverage docs-check smoke-local smoke-real smoke-demo smoke-demo-minio smoke-demo-fail smoke-demo-offline acceptance-snapshot demo-evidence recording-checklist submission-notes final-preflight real-preflight real-check perf-check ebpf-check pyspy-check
+.PHONY: help demo demo-up demo-down local local-down test build web-build coverage docs-check smoke-local smoke-real smoke-demo smoke-demo-minio smoke-demo-fail smoke-demo-offline compose-health acceptance-snapshot demo-evidence recording-checklist submission-notes final-preflight real-preflight real-check perf-check ebpf-check pyspy-check
 
 help:
 	@echo "Mini-Drop commands:"
@@ -9,6 +9,7 @@ help:
 	@echo "  make smoke-demo-minio  Verify Docker Compose signed artifact URLs"
 	@echo "  make smoke-demo-fail  Verify Docker Compose PID failure path"
 	@echo "  make smoke-demo-offline  Verify Docker Compose agent offline path"
+	@echo "  make compose-health  Verify Docker Compose services and host port mappings"
 	@echo "  make acceptance-snapshot  Print compose demo acceptance evidence"
 	@echo "  make demo-evidence  Write artifacts/demo-evidence.md from live demo state"
 	@echo "  make recording-checklist  Write artifacts/recording-checklist.md"
@@ -49,6 +50,9 @@ smoke-demo-fail:
 
 smoke-demo-offline:
 	@powershell -NoProfile -Command "$$apiPort = if ($$env:MINIDROP_API_PORT) { $$env:MINIDROP_API_PORT } else { '8080' }; $$env:MINIDROP_API_BASE_URL = if ($$env:MINIDROP_API_BASE_URL) { $$env:MINIDROP_API_BASE_URL } else { \"http://127.0.0.1:$$apiPort\" }; python scripts\\demo\\smoke_agent_offline.py"
+
+compose-health:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\check-compose-stack.ps1
 
 acceptance-snapshot:
 	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\acceptance-snapshot.ps1
