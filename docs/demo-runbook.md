@@ -75,6 +75,7 @@ make acceptance-snapshot
 make demo-evidence
 make recording-checklist
 make submission-notes
+make coverage
 make final-preflight
 make demo-down
 ```
@@ -98,6 +99,8 @@ expected screenshot file names and a concise commit summary template.
 `make final-preflight` runs the lightweight recording gate, then writes
 `artifacts/final-preflight.md` with the combined check results, command
 outputs, and the final record/no-record decision.
+`make coverage` writes `artifacts/coverage-report.md` and enforces the required
+coverage gates used by the final preflight.
 On Windows without `make`, use the PowerShell snapshot helper directly:
 
 ```powershell
@@ -105,6 +108,7 @@ On Windows without `make`, use the PowerShell snapshot helper directly:
 .\scripts\demo\write-demo-evidence.ps1
 .\scripts\demo\write-recording-checklist.ps1
 .\scripts\demo\write-submission-notes.ps1
+python .\scripts\demo\check_coverage.py
 .\scripts\demo\final-preflight.ps1
 ```
 

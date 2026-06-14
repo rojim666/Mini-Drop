@@ -27,7 +27,8 @@ def submission_lines(api_port: str, web_port: str, minio_console_port: str, evid
         ["06-schedule.png", web_url, "Continuous profile, interval/cron policy, stagger offset, windows, trends"],
         ["07-failure-audit.png", web_url, "FAILED task reason, status event, Agent audit log"],
         ["08-evidence.png", evidence_path, "Acceptance snapshot and real collector preflight"],
-        ["09-minio.png", minio_url, "Object bucket view when reviewers ask for storage proof"],
+        ["09-coverage.png", "artifacts/coverage-report.md", "Required coverage gates and observed Agent coverage"],
+        ["10-minio.png", minio_url, "Object bucket view when reviewers ask for storage proof"],
     ]
 
     lines = [
@@ -59,6 +60,7 @@ def submission_lines(api_port: str, web_port: str, minio_console_port: str, evid
             "- MinIO signed URLs include `X-Amz-Signature` on the Compose path.",
             "- Continuous profiling evidence includes schedule policy and sampled windows.",
             "- Failure path shows a clear `status_reason` and status history.",
+            "- Coverage report shows required gates at or above 50%.",
             "- Real collector preflight is either READY or BLOCKED with concrete next commands.",
             "",
             "## Verification Commands",
@@ -67,6 +69,7 @@ def submission_lines(api_port: str, web_port: str, minio_console_port: str, evid
             "go test ./apps/api-server ./apps/agent ./internal/...",
             "python -m unittest apps.analyzer.main_test",
             "npm --prefix apps\\web run build",
+            "python scripts\\demo\\check_coverage.py",
             "python -m py_compile scripts\\demo\\acceptance_snapshot.py scripts\\demo\\write_demo_evidence.py scripts\\demo\\write_recording_checklist.py scripts\\demo\\write_submission_notes.py",
             "```",
             "",

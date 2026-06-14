@@ -34,6 +34,7 @@ PYTHON_SYNTAX_FILES = [
     "scripts/demo/write_recording_checklist.py",
     "scripts/demo/write_submission_notes.py",
     "scripts/demo/run_final_preflight.py",
+    "scripts/demo/check_coverage.py",
 ]
 
 
@@ -249,7 +250,7 @@ def write_report(
             "",
             "- Start recording only when the overall status is `OK`.",
             "- If real collector preflight is included, `BLOCKED` in the evidence file is acceptable on Windows only when the Linux/WSL2 commands and next steps are shown.",
-            "- Keep `artifacts/demo-evidence.md`, `artifacts/recording-checklist.md`, and `artifacts/submission-notes.md` open before the final walkthrough.",
+            "- Keep `artifacts/demo-evidence.md`, `artifacts/coverage-report.md`, `artifacts/recording-checklist.md`, and `artifacts/submission-notes.md` open before the final walkthrough.",
         ]
     )
 
@@ -352,6 +353,15 @@ def main() -> int:
                 required=True,
                 env=env,
                 timeout=120,
+            )
+        )
+        results.append(
+            run_command(
+                "Coverage gates",
+                [sys.executable, str(ROOT / "scripts" / "demo" / "check_coverage.py")],
+                required=True,
+                env=test_env,
+                timeout=240,
             )
         )
         results.append(

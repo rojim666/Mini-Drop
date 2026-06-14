@@ -77,6 +77,12 @@ make smoke-demo-fail
 make smoke-demo-offline
 ```
 
+To write the coverage evidence required by the engineering baseline:
+
+```bash
+make coverage
+```
+
 To assert that result artifacts are served through MinIO signed URLs:
 
 ```bash
@@ -274,6 +280,12 @@ Current automated coverage includes:
 - rule-based attribution result from TopN hotspots
 - analyzer mock JSON and `perf script` parsing
 - compose smoke task helper
+
+`make coverage` writes `artifacts/coverage-report.md` and enforces the required
+50% coverage gate for the API orchestration layer, shared validation/status
+contracts, and Analyzer transformation logic. Agent coverage is reported in the
+same file as observational because the real collector paths depend on host
+profiling tools and permissions.
 
 ### Local smoke helper
 
@@ -584,6 +596,7 @@ Verified in the current Windows workspace:
 - Recording and submission notes generation with `make recording-checklist` and
   `make submission-notes`.
 - WSL2 real collector readiness report generation with `make real-preflight`.
+- Coverage gate report generation with `make coverage`.
 - Optional WSL2 real-collector preflight evidence in
   `artifacts/demo-evidence.md`.
 - Go API/Agent unit tests.
