@@ -2,6 +2,7 @@ import type {
   Agent,
   AuditLog,
   ContinuousProfile,
+  ContinuousWindowFilters,
   ContinuousWindow,
   ContinuousWindowSummary,
   CreateContinuousProfileInput,
@@ -58,9 +59,23 @@ export async function createContinuousProfile(input: CreateContinuousProfileInpu
   });
 }
 
-export async function getContinuousProfileWindows(profileId: string) {
+export async function getContinuousProfileWindows(profileId: string, filters: ContinuousWindowFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.status && filters.status !== "ALL") {
+    params.set("status", filters.status);
+  }
+  if (filters.from) {
+    params.set("from", filters.from);
+  }
+  if (filters.to) {
+    params.set("to", filters.to);
+  }
+  if (filters.limit) {
+    params.set("limit", String(filters.limit));
+  }
+  const query = params.toString();
   return request<{ windows: ContinuousWindow[]; summary: ContinuousWindowSummary }>(
-    `/api/v1/continuous-profiles/${profileId}/windows`,
+    `/api/v1/continuous-profiles/${profileId}/windows${query ? `?${query}` : ""}`,
   );
 }
 

@@ -32,6 +32,7 @@ import type {
   Agent,
   AuditLog,
   ContinuousProfile,
+  ContinuousWindowFilters,
   ContinuousWindow,
   ContinuousWindowSummary,
   CreateContinuousProfileInput,
@@ -42,6 +43,13 @@ import type {
 import "./App.css";
 
 type NavKey = "home" | "quick" | "machines" | "history" | "files" | "schedule" | "compare";
+type WindowRangeKey = "latest" | "1h" | "6h" | "24h";
+
+const defaultWindowFilters: ContinuousWindowFilters & { range: WindowRangeKey } = {
+  status: "ALL",
+  range: "latest",
+  limit: 24,
+};
 
 const defaultTaskInput: CreateTaskInput = {
   target_pid: 1,
@@ -76,6 +84,7 @@ function App() {
   const [profiles, setProfiles] = useState<ContinuousProfile[]>([]);
   const [windows, setWindows] = useState<ContinuousWindow[]>([]);
   const [windowSummary, setWindowSummary] = useState<ContinuousWindowSummary | null>(null);
+  const [windowFilters, setWindowFilters] = useState<ContinuousWindowFilters & { range: WindowRangeKey }>(defaultWindowFilters);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -191,7 +200,7 @@ function App() {
     let alive = true;
     const loadWindows = async () => {
       try {
-        const data = await getContinuousProfileWindows(selectedProfileId);
+        const data = await getContinuousProfileWindows(selectedProfileId, buildWindowQuery(windowFilters));
         if (alive) {
           setWindows(data.windows);
           setWindowSummary(data.summary ?? null);
@@ -209,7 +218,7 @@ function App() {
       alive = false;
       window.clearInterval(interval);
     };
-  }, [selectedProfileId]);
+  }, [selectedProfileId, windowFilters]);
 
   async function refreshOverview(initial = false) {
     try {
@@ -383,6 +392,8 @@ function App() {
                     setSelectedProfileId={setSelectedProfileId}
                     windows={windows}
                     windowSummary={windowSummary}
+                    windowFilters={windowFilters}
+                    setWindowFilters={setWindowFilters}
                     agents={agents}
                     continuousInput={continuousInput}
                     setContinuousInput={setContinuousInput}
@@ -952,6 +963,8 @@ function SchedulePage({
   setSelectedProfileId,
   windows,
   windowSummary,
+  windowFilters,
+  setWindowFilters,
   agents,
   continuousInput,
   setContinuousInput,
@@ -964,6 +977,8 @@ function SchedulePage({
   setSelectedProfileId: (profileId: string) => void;
   windows: ContinuousWindow[];
   windowSummary: ContinuousWindowSummary | null;
+  windowFilters: ContinuousWindowFilters & { range: WindowRangeKey };
+  setWindowFilters: React.Dispatch<React.SetStateAction<ContinuousWindowFilters & { range: WindowRangeKey }>>;
   agents: Agent[];
   continuousInput: CreateContinuousProfileInput;
   setContinuousInput: React.Dispatch<React.SetStateAction<CreateContinuousProfileInput>>;
@@ -1079,6 +1094,60 @@ function SchedulePage({
 
       <div className="console-card">
         <CardHeader title={selectedProfile ? `5 分钟窗口 - ${selectedProfile.name}` : "5 分钟窗口"} />
+        <div className="window-filter-bar">
+          <label>
+            <span>状态</span>
+            <select
+              value={windowFilters.status ?? "ALL"}
+              onChange={(event) =>
+                setWindowFilters((current) => ({
+                  ...current,
+                  status: event.target.value as ContinuousWindowFilters["status"],
+                }))
+              }
+            >
+              <option value="ALL">全部状态</option>
+              <option value="PENDING">等待中</option>
+              <option value="RUNNING">执行中</option>
+              <option value="UPLOADING">上传中</option>
+              <option value="DONE">已完成</option>
+              <option value="FAILED">失败</option>
+            </select>
+          </label>
+          <label>
+            <span>时间范围</span>
+            <select
+              value={windowFilters.range}
+              onChange={(event) =>
+                setWindowFilters((current) => ({
+                  ...current,
+                  range: event.target.value as WindowRangeKey,
+                }))
+              }
+            >
+              <option value="latest">最近窗口</option>
+              <option value="1h">最近 1 小时</option>
+              <option value="6h">最近 6 小时</option>
+              <option value="24h">最近 24 小时</option>
+            </select>
+          </label>
+          <label>
+            <span>显示数量</span>
+            <select
+              value={windowFilters.limit ?? 24}
+              onChange={(event) =>
+                setWindowFilters((current) => ({
+                  ...current,
+                  limit: Number(event.target.value),
+                }))
+              }
+            >
+              <option value={12}>12 个窗口</option>
+              <option value={24}>24 个窗口</option>
+              <option value={48}>48 个窗口</option>
+            </select>
+          </label>
+        </div>
         <div className="window-summary-strip">
           <div>
             <span>总窗口</span>
@@ -1110,6 +1179,24 @@ function SchedulePage({
                 : "暂无"}
             </strong>
           </div>
+        </div>
+        <div className="window-timeline">
+          {windows.length === 0 ? (
+            <EmptyBlock text="当前筛选条件下暂无窗口。" />
+          ) : (
+            windows.map((window) => (
+              <button
+                key={window.id}
+                className={`window-timeline-item ${window.status.toLowerCase()}`}
+                type="button"
+                onClick={() => onOpenTask(window.task_id)}
+                title={`${formatDate(window.window_start_at)} - ${formatDate(window.window_end_at)} / ${window.status_reason}`}
+              >
+                <span>{formatTimeOnly(window.window_start_at)}</span>
+                <strong>{statusText(window.status)}</strong>
+              </button>
+            ))
+          )}
         </div>
         <table className="data-table">
           <thead>
@@ -1801,6 +1888,24 @@ function statusText(value: string) {
   return map[value] ?? value;
 }
 
+function buildWindowQuery(filters: ContinuousWindowFilters & { range: WindowRangeKey }): ContinuousWindowFilters {
+  const query: ContinuousWindowFilters = {
+    status: filters.status,
+    limit: filters.limit,
+  };
+  if (filters.range !== "latest") {
+    const hours: Record<Exclude<WindowRangeKey, "latest">, number> = {
+      "1h": 1,
+      "6h": 6,
+      "24h": 24,
+    };
+    const now = new Date();
+    query.from = new Date(now.getTime() - hours[filters.range] * 60 * 60 * 1000).toISOString();
+    query.to = now.toISOString();
+  }
+  return query;
+}
+
 function formatPercent(value: number) {
   if (!Number.isFinite(value)) {
     return "0%";
@@ -1861,6 +1966,16 @@ function formatDate(value: string) {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatTimeOnly(value: string) {
+  if (!value) {
+    return "-";
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
   }).format(new Date(value));
 }
 

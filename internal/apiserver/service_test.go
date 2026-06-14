@@ -572,6 +572,95 @@ func TestContinuousWindowTaskStatusSyncsToWindow(t *testing.T) {
 	}
 }
 
+func TestContinuousWindowFiltersScopeTimeline(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "agt_schedule_filter",
+		"hostname": "demo-host",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusOK)
+
+	createResp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles", map[string]any{
+		"name":                "filtered windows",
+		"target_pid":          4321,
+		"target_agent_id":     "agt_schedule_filter",
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+		"interval_sec":        300,
+	}, http.StatusCreated)
+	profileID := createResp["profile"].(map[string]any)["id"].(string)
+
+	if err := svc.db.Where("profile_id = ?", profileID).Delete(&minidrop.ContinuousProfileWindow{}).Error; err != nil {
+		t.Fatalf("delete initial window: %v", err)
+	}
+
+	base := time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)
+	testWindows := []minidrop.ContinuousProfileWindow{
+		{
+			ID:            "cwin_filter_old_done",
+			ProfileID:     profileID,
+			TaskID:        "tsk_filter_old_done",
+			WindowStartAt: base,
+			WindowEndAt:   base.Add(5 * time.Minute),
+			Status:        minidrop.TaskStatusDone,
+			StatusReason:  "old done window",
+			CreatedAt:     base,
+			UpdatedAt:     base,
+		},
+		{
+			ID:            "cwin_filter_selected_done",
+			ProfileID:     profileID,
+			TaskID:        "tsk_filter_selected_done",
+			WindowStartAt: base.Add(10 * time.Minute),
+			WindowEndAt:   base.Add(15 * time.Minute),
+			Status:        minidrop.TaskStatusDone,
+			StatusReason:  "selected done window",
+			CreatedAt:     base,
+			UpdatedAt:     base,
+		},
+		{
+			ID:            "cwin_filter_failed",
+			ProfileID:     profileID,
+			TaskID:        "tsk_filter_failed",
+			WindowStartAt: base.Add(20 * time.Minute),
+			WindowEndAt:   base.Add(25 * time.Minute),
+			Status:        minidrop.TaskStatusFailed,
+			StatusReason:  "failed window",
+			CreatedAt:     base,
+			UpdatedAt:     base,
+		},
+	}
+	if err := svc.db.Create(&testWindows).Error; err != nil {
+		t.Fatalf("seed timeline windows: %v", err)
+	}
+
+	path := "/api/v1/continuous-profiles/" + profileID + "/windows?status=DONE&from=" +
+		base.Add(5*time.Minute).Format(time.RFC3339) + "&to=" +
+		base.Add(15*time.Minute).Format(time.RFC3339) + "&limit=10"
+	windowsResp := performJSON(t, router, http.MethodGet, path, nil, http.StatusOK)
+	windows := windowsResp["windows"].([]any)
+	if len(windows) != 1 {
+		t.Fatalf("expected 1 filtered window, got %d", len(windows))
+	}
+	window := windows[0].(map[string]any)
+	if got := window["id"].(string); got != "cwin_filter_selected_done" {
+		t.Fatalf("expected selected done window, got %s", got)
+	}
+	summary := windowsResp["summary"].(map[string]any)
+	if got := summary["total_windows"].(float64); got != 1 {
+		t.Fatalf("expected filtered total 1, got %v", got)
+	}
+	if got := summary["latest_status"].(string); got != string(minidrop.TaskStatusDone) {
+		t.Fatalf("expected latest done status, got %s", got)
+	}
+
+	performJSON(t, router, http.MethodGet, "/api/v1/continuous-profiles/"+profileID+"/windows?status=BOGUS", nil, http.StatusBadRequest)
+}
+
 func performJSON(t *testing.T, router http.Handler, method, path string, body any, expected int) map[string]any {
 	t.Helper()
 

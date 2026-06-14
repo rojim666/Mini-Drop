@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -83,6 +84,14 @@ type continuousWindowSummaryPayload struct {
 	LatestWindowStartAt *time.Time `json:"latest_window_start_at,omitempty"`
 	LatestWindowEndAt   *time.Time `json:"latest_window_end_at,omitempty"`
 	DoneRatio           float64    `json:"done_ratio"`
+}
+
+type continuousWindowFilters struct {
+	Status    minidrop.TaskStatus
+	HasStatus bool
+	From      *time.Time
+	To        *time.Time
+	Limit     int
 }
 
 type apiError struct {
@@ -589,8 +598,25 @@ func (s *Service) getContinuousProfile(c *gin.Context) {
 }
 
 func (s *Service) listContinuousProfileWindows(c *gin.Context) {
+	filters, err := parseContinuousWindowFilters(c)
+	if err != nil {
+		s.writeError(c, http.StatusBadRequest, err)
+		return
+	}
+
 	var windows []minidrop.ContinuousProfileWindow
-	if err := s.db.Where("profile_id = ?", c.Param("id")).Order("window_start_at desc").Limit(24).Find(&windows).Error; err != nil {
+	query := s.db.Where("profile_id = ?", c.Param("id"))
+	if filters.HasStatus {
+		query = query.Where("status = ?", filters.Status)
+	}
+	if filters.From != nil {
+		query = query.Where("window_start_at >= ?", *filters.From)
+	}
+	if filters.To != nil {
+		query = query.Where("window_start_at <= ?", *filters.To)
+	}
+
+	if err := query.Order("window_start_at desc").Limit(filters.Limit).Find(&windows).Error; err != nil {
 		s.writeError(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -1119,6 +1145,58 @@ func summarizeContinuousWindows(windows []minidrop.ContinuousProfileWindow) cont
 
 	summary.DoneRatio = float64(summary.DoneWindows) / float64(summary.TotalWindows)
 	return summary
+}
+
+func parseContinuousWindowFilters(c *gin.Context) (continuousWindowFilters, error) {
+	filters := continuousWindowFilters{Limit: 24}
+
+	status := strings.ToUpper(strings.TrimSpace(c.Query("status")))
+	if status != "" && status != "ALL" {
+		switch minidrop.TaskStatus(status) {
+		case minidrop.TaskStatusPending, minidrop.TaskStatusRunning, minidrop.TaskStatusUploading, minidrop.TaskStatusDone, minidrop.TaskStatusFailed:
+			filters.Status = minidrop.TaskStatus(status)
+			filters.HasStatus = true
+		default:
+			return filters, errors.New("status must be one of: PENDING, RUNNING, UPLOADING, DONE, FAILED")
+		}
+	}
+
+	from, err := parseOptionalRFC3339Query(c, "from")
+	if err != nil {
+		return filters, err
+	}
+	to, err := parseOptionalRFC3339Query(c, "to")
+	if err != nil {
+		return filters, err
+	}
+	if from != nil && to != nil && from.After(*to) {
+		return filters, errors.New("from must be before to")
+	}
+	filters.From = from
+	filters.To = to
+
+	if rawLimit := strings.TrimSpace(c.Query("limit")); rawLimit != "" {
+		limit, err := strconv.Atoi(rawLimit)
+		if err != nil || limit < 1 || limit > 100 {
+			return filters, errors.New("limit must be between 1 and 100")
+		}
+		filters.Limit = limit
+	}
+
+	return filters, nil
+}
+
+func parseOptionalRFC3339Query(c *gin.Context, name string) (*time.Time, error) {
+	raw := strings.TrimSpace(c.Query(name))
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s must be RFC3339 time", name)
+	}
+	value = value.UTC()
+	return &value, nil
 }
 
 func (s *Service) toTaskResultPayload(c *gin.Context, task minidrop.Task, result minidrop.AnalysisResult) taskResultPayload {

@@ -142,6 +142,13 @@ export interface ContinuousWindowSummary {
   done_ratio: number;
 }
 
+export interface ContinuousWindowFilters {
+  status?: "ALL" | "PENDING" | "RUNNING" | "UPLOADING" | "DONE" | "FAILED";
+  from?: string;
+  to?: string;
+  limit?: number;
+}
+
 export interface CreateContinuousProfileInput {
   name: string;
   target_pid: number;

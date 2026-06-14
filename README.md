@@ -410,6 +410,9 @@ The window list endpoint also returns a small aggregate summary for the latest
 24 windows: total, done, failed, active, pending, latest status, latest range,
 and done ratio. The Web page renders that summary above the window table so a
 reviewer can verify continuous profiling health without opening every task.
+The same endpoint accepts `status`, `from`, `to`, and `limit` query parameters
+for scoped timeline review, and the Web page exposes those filters with a
+clickable window strip for drilling into the materialized task.
 
 For a Windows-safe demo, choose `collector_type=mock-perf`, enter the printed
 mock target PID, and keep the default `5 分钟` interval. The first window is
