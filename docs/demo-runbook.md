@@ -74,6 +74,7 @@ make smoke-demo-offline
 make acceptance-snapshot
 make demo-evidence
 make recording-checklist
+make submission-notes
 make demo-down
 ```
 
@@ -91,12 +92,15 @@ If collector dependencies are missing, the evidence file records the blocked
 collector and the exact install or permission command to run next.
 `make recording-checklist` writes `artifacts/recording-checklist.md`, a
 page-by-page capture checklist for the final recording.
+`make submission-notes` writes `artifacts/submission-notes.md`, including the
+expected screenshot file names and a concise commit summary template.
 On Windows without `make`, use the PowerShell snapshot helper directly:
 
 ```powershell
 .\scripts\demo\acceptance-snapshot.ps1
 .\scripts\demo\write-demo-evidence.ps1
 .\scripts\demo\write-recording-checklist.ps1
+.\scripts\demo\write-submission-notes.ps1
 ```
 
 If compose is running on alternate ports, pass the same ports to the snapshot
@@ -106,6 +110,7 @@ and evidence helpers:
 .\scripts\demo\acceptance-snapshot.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
 .\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
 .\scripts\demo\write-recording-checklist.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
+.\scripts\demo\write-submission-notes.ps1 -ApiPort 18080 -WebPort 14173 -MinioConsolePort 19001
 ```
 
 On Linux / WSL2 without `make`, use the Bash helper:
@@ -115,6 +120,7 @@ bash ./scripts/demo/acceptance-snapshot.sh
 bash ./scripts/demo/write-demo-evidence.sh
 bash ./scripts/demo/write-demo-evidence.sh --include-real-preflight
 bash ./scripts/demo/write-recording-checklist.sh
+bash ./scripts/demo/write-submission-notes.sh
 ```
 
 If the stack is already running but lacks two completed mock tasks, seed and

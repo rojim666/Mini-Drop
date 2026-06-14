@@ -95,6 +95,13 @@ To write a page-by-page recording checklist:
 make recording-checklist
 ```
 
+To write a submission notes template with screenshot names and verification
+commands:
+
+```bash
+make submission-notes
+```
+
 For the recommended 10 to 15 minute recording flow, use the final demo script:
 
 - [Final demo script](docs/demo-script.md)
@@ -104,6 +111,7 @@ On Windows PowerShell without `make`, run the helper directly:
 ```powershell
 .\scripts\demo\acceptance-snapshot.ps1
 .\scripts\demo\write-recording-checklist.ps1
+.\scripts\demo\write-submission-notes.ps1
 ```
 
 For an alternate-port compose stack:
@@ -558,6 +566,8 @@ Verified in the current Windows workspace:
 - Docker Compose acceptance snapshot with two completed TopN-backed tasks.
 - Markdown demo evidence generation with `make demo-evidence` or
   `python scripts/demo/write_demo_evidence.py`.
+- Recording and submission notes generation with `make recording-checklist` and
+  `make submission-notes`.
 - Optional WSL2 real-collector preflight evidence in
   `artifacts/demo-evidence.md`.
 - Go API/Agent unit tests.

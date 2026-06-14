@@ -251,7 +251,7 @@ make smoke-real COLLECTOR_TYPE=py-spy
 | D11 | eBPF 采集器 | 代码完成，待 Linux 验证 |
 | D12 | Continuous Profiling 最小版 | 完成 |
 | D13 | 用户态采集器和智能归因 | 完成最小版 |
-| D14 | README、runbook、演示脚本、录屏准备 | 演示脚本已补，截图和最终录屏待完成 |
+| D14 | README、runbook、演示脚本、录屏准备 | 演示脚本、录制清单和提交说明模板已补，最终人工录屏待完成 |
 
 ## Commit 规则
 

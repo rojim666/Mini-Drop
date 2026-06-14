@@ -19,6 +19,7 @@ Generate acceptance and evidence output:
 .\scripts\demo\acceptance-snapshot.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -SeedTasks
 .\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -IncludeRealPreflight
 .\scripts\demo\write-recording-checklist.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
+.\scripts\demo\write-submission-notes.ps1 -ApiPort 18080 -WebPort 14173 -MinioConsolePort 19001
 ```
 
 Open these URLs before recording:
@@ -28,6 +29,7 @@ Open these URLs before recording:
 - MinIO console: <http://localhost:19001>
 - Evidence file: `artifacts/demo-evidence.md`
 - Recording checklist: `artifacts/recording-checklist.md`
+- Submission notes: `artifacts/submission-notes.md`
 
 Expected preflight state on the current machine:
 
@@ -175,6 +177,7 @@ Before finishing, show or mention:
 - `continuous_profiles` and `continuous_profile_samples` lines from
   `acceptance-snapshot`, including each profile's schedule policy.
 - `artifacts/demo-evidence.md`.
+- `artifacts/submission-notes.md` screenshot manifest.
 - Recent Git commits with meaningful messages.
 - Tests:
 
