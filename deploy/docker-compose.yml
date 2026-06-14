@@ -1,0 +1,65 @@
+services:
+  demo-target:
+    image: python:3.14-slim
+    command:
+      - python
+      - -u
+      - -c
+      - |
+        import math
+        import time
+        x = 0.0
+        while True:
+            x = math.sin(x + 0.5)
+            time.sleep(0.01)
+
+  api-server:
+    build:
+      context: ..
+      dockerfile: apps/api-server/Dockerfile
+    environment:
+      MINIDROP_ALLOWED_ORIGIN: http://localhost:4173,http://127.0.0.1:4173
+      MINIDROP_API_ADDR: 0.0.0.0:8080
+      MINIDROP_DATA_DIR: /app/data
+      MINIDROP_DB_PATH: /app/data/mini-drop.db
+      MINIDROP_ARTIFACT_DIR: /app/artifacts
+    ports:
+      - "8080:8080"
+    volumes:
+      - mini_drop_data:/app/data
+      - mini_drop_artifacts:/app/artifacts
+
+  agent:
+    build:
+      context: ..
+      dockerfile: apps/agent/Dockerfile
+    depends_on:
+      - api-server
+      - demo-target
+    environment:
+      MINIDROP_API_BASE_URL: http://api-server:8080
+      MINIDROP_AGENT_ID: agt_compose
+      MINIDROP_AGENT_HOSTNAME: compose-agent
+      MINIDROP_AGENT_IP: demo-target
+      MINIDROP_AGENT_VERSION: 0.1.0
+      MINIDROP_PYTHON_BIN: python
+      MINIDROP_ANALYZER_SCRIPT: /app/analyzer/main.py
+      MINIDROP_ARTIFACT_DIR: /app/artifacts
+    pid: service:demo-target
+    volumes:
+      - mini_drop_artifacts:/app/artifacts
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8080
+    depends_on:
+      - api-server
+    ports:
+      - "4173:80"
+
+volumes:
+  mini_drop_data:
+  mini_drop_artifacts:

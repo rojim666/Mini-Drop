@@ -1,0 +1,153 @@
+#!/usr/bin/env python
+import argparse
+import json
+import math
+import sys
+from pathlib import Path
+from typing import Any
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Mini-Drop mock analyzer")
+    parser.add_argument("--task-id", required=True)
+    parser.add_argument("--raw-path", required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--target-pid", required=True, type=int)
+    parser.add_argument("--sample-rate", required=True, type=int)
+    parser.add_argument("--sample-duration", required=True, type=int)
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    raw_path = Path(args.raw_path)
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if not raw_path.exists():
+        print(json.dumps({"error": f"raw artifact not found: {raw_path}"}), file=sys.stderr)
+        return 1
+
+    raw_payload = json.loads(raw_path.read_text(encoding="utf-8"))
+    frames = raw_payload.get("frames", [])
+    hotspots = build_hotspots(frames)
+    flamegraph_path = output_dir / "flamegraph.svg"
+    topn_path = output_dir / "topn.json"
+
+    flamegraph_path.write_text(
+        render_flamegraph_svg(
+            task_id=args.task_id,
+            target_pid=args.target_pid,
+            sample_rate=args.sample_rate,
+            sample_duration=args.sample_duration,
+            hotspots=hotspots,
+        ),
+        encoding="utf-8",
+    )
+    topn_path.write_text(json.dumps(hotspots, indent=2), encoding="utf-8")
+
+    result = {
+        "flamegraph_path": to_relative_artifact_path(flamegraph_path),
+        "topn_path": to_relative_artifact_path(topn_path),
+        "summary": f"Mock profile for PID {args.target_pid} captured at {args.sample_rate}Hz for {args.sample_duration}s.",
+    }
+    print(json.dumps(result))
+    return 0
+
+
+def build_hotspots(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    totals: dict[str, int] = {}
+    total_samples = 0
+    for frame in frames:
+        samples = int(frame.get("samples", 0))
+        stack = frame.get("stack") or []
+        if not stack:
+            continue
+        leaf = str(stack[-1])
+        totals[leaf] = totals.get(leaf, 0) + samples
+        total_samples += samples
+
+    hotspots = []
+    for function, samples in sorted(totals.items(), key=lambda item: item[1], reverse=True):
+        percent = round((samples / total_samples) * 100 if total_samples else 0, 1)
+        hotspots.append({"function": function, "samples": samples, "percent": percent})
+    return hotspots
+
+
+def render_flamegraph_svg(
+    task_id: str,
+    target_pid: int,
+    sample_rate: int,
+    sample_duration: int,
+    hotspots: list[dict[str, Any]],
+) -> str:
+    width = 1200
+    height = 560
+    chart_left = 60
+    chart_width = 1080
+    bar_height = 48
+    bars = []
+
+    palette = [
+        "#f59e0b",
+        "#fb7185",
+        "#38bdf8",
+        "#a78bfa",
+        "#34d399",
+        "#f97316",
+    ]
+
+    max_samples = max((int(item["samples"]) for item in hotspots), default=1)
+    for index, item in enumerate(hotspots[:6]):
+        samples = int(item["samples"])
+        normalized = samples / max_samples if max_samples else 0
+        bar_width = max(180, math.floor(chart_width * normalized))
+        y = 180 + index * 56
+        bars.append(
+            f"""
+            <g transform="translate({chart_left}, {y})">
+              <rect rx="6" ry="6" width="{bar_width}" height="{bar_height}" fill="{palette[index % len(palette)]}" opacity="0.95"/>
+              <text x="18" y="29" font-size="18" fill="#0f172a" font-family="Verdana, Geneva, sans-serif">{escape_xml(str(item["function"]))}</text>
+              <text x="{bar_width - 18}" y="29" text-anchor="end" font-size="16" fill="#0f172a" font-family="Verdana, Geneva, sans-serif">{item["samples"]} samples</text>
+            </g>
+            """
+        )
+
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc">
+  <title id="title">Mini-Drop flamegraph for {escape_xml(task_id)}</title>
+  <desc id="desc">Mock analysis result for PID {target_pid}</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#08111f" />
+      <stop offset="100%" stop-color="#111827" />
+    </linearGradient>
+  </defs>
+  <rect width="{width}" height="{height}" fill="url(#bg)" />
+  <text x="60" y="64" font-size="34" fill="#f8fafc" font-family="Georgia, 'Times New Roman', serif">Mini-Drop Mock Flamegraph</text>
+  <text x="60" y="102" font-size="18" fill="#94a3b8" font-family="Verdana, Geneva, sans-serif">Task {escape_xml(task_id)} | PID {target_pid} | {sample_rate}Hz | {sample_duration}s</text>
+  <text x="60" y="144" font-size="14" fill="#64748b" font-family="Verdana, Geneva, sans-serif">Synthetic profile generated by the analyzer CLI to exercise the full platform flow.</text>
+  {"".join(bars)}
+</svg>
+"""
+
+
+def to_relative_artifact_path(path: Path) -> str:
+    parts = path.parts
+    if "artifacts" in parts:
+        idx = parts.index("artifacts")
+        return "/".join(parts[idx + 1 :])
+    return path.as_posix()
+
+
+def escape_xml(text: str) -> str:
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

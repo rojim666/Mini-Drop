@@ -1,0 +1,40 @@
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+build/
+bin/
+tmp/
+coverage/
+
+# Node
+node_modules/
+
+# Go
+*.test
+*.out
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local artifacts
+artifacts/
+data/
+*.perf
+perf.data
+*.svg
+

@@ -1,0 +1,65 @@
+export interface Agent {
+  id: string;
+  hostname: string;
+  ip: string;
+  version: string;
+  status: "UNKNOWN" | "ONLINE" | "OFFLINE";
+  last_heartbeat_at: string;
+}
+
+export interface TaskEvent {
+  id: string;
+  from_status: string;
+  to_status: string;
+  reason: string;
+  created_at: string;
+}
+
+export interface Hotspot {
+  function: string;
+  samples: number;
+  percent: number;
+}
+
+export interface TaskResult {
+  flamegraph_url: string;
+  topn_url: string;
+  summary: string;
+  hotspots: Hotspot[];
+}
+
+export interface Task {
+  id: string;
+  target_pid: number;
+  target_agent_id: string;
+  sample_duration_sec: number;
+  sample_rate_hz: number;
+  collector_type: string;
+  status: "PENDING" | "RUNNING" | "UPLOADING" | "DONE" | "FAILED";
+  status_reason: string;
+  created_at: string;
+  updated_at: string;
+  started_at?: string;
+  finished_at?: string;
+  raw_artifact_url?: string;
+  analysis_artifact_url?: string;
+  events?: TaskEvent[];
+  result?: TaskResult | null;
+}
+
+export interface AuditLog {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  reason: string;
+  created_at: string;
+}
+
+export interface CreateTaskInput {
+  target_pid: number;
+  target_agent_id?: string;
+  sample_duration_sec: number;
+  sample_rate_hz: number;
+  collector_type: string;
+}
