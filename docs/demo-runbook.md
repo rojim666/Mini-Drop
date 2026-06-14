@@ -103,6 +103,10 @@ expected screenshot file names and a concise commit summary template.
 `make final-preflight` runs the lightweight recording gate, then writes
 `artifacts/final-preflight.md` with the combined check results, command
 outputs, and the final record/no-record decision.
+When real collector preflight is included, the report also contains a
+non-blocking `Real collector readiness` step. `BLOCKED` there means the Windows
+compose demo can still be recorded, while WSL2/Linux dependencies must be fixed
+before real `perf`, `ebpf-syscall`, or `py-spy` smoke validation.
 `make coverage` writes `artifacts/coverage-report.md` and enforces the required
 coverage gates used by the final preflight.
 On Windows without `make`, use the PowerShell snapshot helper directly:

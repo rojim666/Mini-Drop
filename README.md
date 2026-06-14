@@ -119,6 +119,12 @@ To run the full final preflight before recording:
 make final-preflight
 ```
 
+When `-IncludeRealPreflight` or `--include-real-preflight` is used, the final
+preflight also writes `artifacts/real-collector-preflight.md` and records a
+non-blocking real collector readiness step. A `BLOCKED` result is acceptable for
+the Windows compose recording path when the report names the missing WSL2/Linux
+tools or permissions.
+
 For the recommended 10 to 15 minute recording flow, use the final demo script:
 
 - [Final demo script](docs/demo-script.md)

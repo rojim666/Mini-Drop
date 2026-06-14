@@ -164,6 +164,47 @@ def seed_acceptance_tasks(count: int, target_pid: int, agent_id: str, env: dict[
     )
 
 
+def check_real_collector_readiness(collectors: str, target_pid: int, env: dict[str, str]) -> StepResult:
+    ps_args = [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(ROOT / "scripts" / "demo" / "prepare-real-collectors.ps1"),
+        "-Collectors",
+        collectors,
+        "-Output",
+        str(ROOT / "artifacts" / "real-collector-preflight.md"),
+    ]
+    if target_pid > 0:
+        ps_args.extend(["-Pid", str(target_pid)])
+
+    direct_args = [
+        sys.executable,
+        str(ROOT / "scripts" / "demo" / "prepare_real_collectors.py"),
+        "--collectors",
+        collectors,
+        "--output",
+        str(ROOT / "artifacts" / "real-collector-preflight.md"),
+    ]
+    if target_pid > 0:
+        direct_args.extend(["--pid", str(target_pid)])
+
+    args = ps_args if os.name == "nt" else direct_args
+    result = run_command("Real collector readiness", args, required=False, env=env, timeout=180)
+    if result.code != 0:
+        result.output = "\n".join(
+            part
+            for part in [
+                result.output,
+                "Real collectors are BLOCKED on this host. This is allowed for the Windows compose recording path when the generated report lists the missing Linux/WSL2 tools or permissions.",
+            ]
+            if part
+        )
+    return result
+
+
 def truncate_output(output: str, limit: int = 6000) -> str:
     if len(output) <= limit:
         return output or "(no output)"
@@ -335,6 +376,9 @@ def main() -> int:
     results.append(
         run_command("Git whitespace check", ["git", "diff", "--check"], required=True, env=env, timeout=60)
     )
+
+    if args.include_real_preflight:
+        results.append(check_real_collector_readiness(args.real_collectors, args.target_pid, env))
 
     if not args.skip_tests:
         test_env = env.copy()

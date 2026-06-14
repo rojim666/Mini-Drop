@@ -39,6 +39,8 @@ Open these URLs before recording:
 Expected preflight state on the current machine:
 
 - Mock compose path: ready.
+- Final preflight overall status: `OK`.
+- Real collector readiness step: non-blocking for Windows compose recording.
 - Real `perf`: blocked until `perf` is installed and `perf_event_paranoid` is lowered.
 - `ebpf-syscall`: blocked until `bpftrace` and tracefs permissions are ready.
 - `py-spy`: blocked until `py-spy` is installed and attach permissions are available.
@@ -181,6 +183,8 @@ Before finishing, show or mention:
 
 - `compose_stack=OK` from `check-compose-stack`.
 - `acceptance=OK` from `acceptance-snapshot`.
+- `Real collector readiness` from `final-preflight`, showing READY or the exact
+  BLOCKED prerequisites.
 - `continuous_profiles` and `continuous_profile_samples` lines from
   `acceptance-snapshot`, including each profile's schedule policy.
 - `artifacts/demo-evidence.md`.
