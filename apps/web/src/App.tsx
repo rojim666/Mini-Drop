@@ -835,6 +835,7 @@ function ComparePage({
   const targetTask = targetTaskDetail?.id === targetTaskSummary?.id ? targetTaskDetail : targetTaskSummary;
   const diffRows = buildHotspotDiff(baseTask?.result?.hotspots ?? [], targetTask?.result?.hotspots ?? []);
   const canCompare = Boolean(baseTask?.result?.hotspots?.length && targetTask?.result?.hotspots?.length && baseTask.id !== targetTask.id);
+  const aggregateRows = buildCrossTaskHotspotAggregate(comparableTasks);
 
   return (
     <div className="page-stack">
@@ -867,6 +868,44 @@ function ComparePage({
           <TaskSummaryPanel task={targetTask} onOpenTask={onOpenTask} />
         </div>
       </section>
+
+      <div className="console-card">
+        <CardHeader title="跨任务热点聚合" />
+        {aggregateRows.length === 0 ? (
+          <EmptyBlock text="暂无可聚合的 TopN 热点，请先完成至少一个包含分析结果的任务。" />
+        ) : (
+          <table className="data-table aggregate-table">
+            <thead>
+              <tr>
+                <th>函数 / 事件</th>
+                <th>覆盖任务</th>
+                <th>平均占比</th>
+                <th>峰值</th>
+                <th>样本总数</th>
+                <th>最近任务</th>
+              </tr>
+            </thead>
+            <tbody>
+              {aggregateRows.map((row) => (
+                <tr key={row.name}>
+                  <td title={row.name}>{row.name}</td>
+                  <td>
+                    {row.taskCount} / {comparableTasks.length}
+                  </td>
+                  <td>{row.averagePercent.toFixed(2)}%</td>
+                  <td>{row.peakPercent.toFixed(2)}%</td>
+                  <td>{row.samples}</td>
+                  <td>
+                    <button type="button" className="inline-action" onClick={() => onOpenTask(row.latestTaskId)}>
+                      {row.latestTaskId}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
 
       <div className="console-card">
         <CardHeader title="热点差异" />
@@ -2087,6 +2126,55 @@ function buildHotspotDiff(baseHotspots: Hotspot[], targetHotspots: Hotspot[]) {
       };
     })
     .sort((left, right) => Math.abs(right.deltaPercent) - Math.abs(left.deltaPercent));
+}
+
+function buildCrossTaskHotspotAggregate(tasks: Task[]) {
+  const summary = new Map<string, {
+    name: string;
+    taskCount: number;
+    totalPercent: number;
+    peakPercent: number;
+    samples: number;
+    latestTaskId: string;
+    latestCreatedAt: number;
+  }>();
+
+  for (const task of tasks) {
+    const hotspots = task.result?.hotspots ?? [];
+    const createdAt = Date.parse(task.created_at) || 0;
+    for (const hotspot of hotspots) {
+      const current = summary.get(hotspot.function);
+      if (!current) {
+        summary.set(hotspot.function, {
+          name: hotspot.function,
+          taskCount: 1,
+          totalPercent: Number(hotspot.percent ?? 0),
+          peakPercent: Number(hotspot.percent ?? 0),
+          samples: Number(hotspot.samples ?? 0),
+          latestTaskId: task.id,
+          latestCreatedAt: createdAt,
+        });
+        continue;
+      }
+
+      current.taskCount += 1;
+      current.totalPercent += Number(hotspot.percent ?? 0);
+      current.peakPercent = Math.max(current.peakPercent, Number(hotspot.percent ?? 0));
+      current.samples += Number(hotspot.samples ?? 0);
+      if (createdAt >= current.latestCreatedAt) {
+        current.latestTaskId = task.id;
+        current.latestCreatedAt = createdAt;
+      }
+    }
+  }
+
+  return Array.from(summary.values())
+    .map((item) => ({
+      ...item,
+      averagePercent: item.totalPercent / item.taskCount,
+    }))
+    .sort((left, right) => right.peakPercent - left.peakPercent || right.taskCount - left.taskCount)
+    .slice(0, 6);
 }
 
 function formatDelta(value: number) {

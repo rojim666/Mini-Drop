@@ -449,6 +449,11 @@ The built-in tools are `get_top_hotspots(task_id)`,
 deterministic demo evidence for CPU / IO / memory / wait alignment; it is the
 contract that a later real metrics source can replace.
 
+The task comparison page also aggregates TopN hotspots across completed tasks,
+showing recurring functions, coverage, average percent, peak percent, total
+samples, and the latest task link. This gives reviewers a quick cross-task view
+before opening individual flamegraphs.
+
 Analyzer writes `perf.script.txt` and `collapsed.txt` for every `perf.data`
 analysis. It uses the built-in stack parser and SVG renderer by default. To use
 Brendan Gregg's standard FlameGraph tools, set:

@@ -1270,6 +1270,21 @@ button:disabled {
   width: 34%;
 }
 
+.aggregate-table th:nth-child(1),
+.aggregate-table td:nth-child(1) {
+  width: 34%;
+}
+
+.aggregate-table th:nth-child(2),
+.aggregate-table td:nth-child(2) {
+  width: 92px;
+}
+
+.aggregate-table th:nth-child(6),
+.aggregate-table td:nth-child(6) {
+  width: 160px;
+}
+
 .delta-pill {
   min-width: 70px;
   height: 24px;

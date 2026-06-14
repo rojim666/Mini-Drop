@@ -868,6 +868,52 @@ func TestContinuousProfileTrendsAggregateTopNWindows(t *testing.T) {
 	performJSON(t, router, http.MethodGet, "/api/v1/continuous-profiles/"+profileID+"/trends?limit=bogus", nil, http.StatusBadRequest)
 }
 
+func TestListTasksIncludesDoneTaskResultsForAggregation(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+	now := time.Now().UTC()
+	task := minidrop.Task{
+		ID:                "tsk_list_result",
+		TargetPID:         4321,
+		TargetAgentID:     "agt_list",
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "mock-perf",
+		Status:            minidrop.TaskStatusDone,
+		StatusReason:      "done",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+	if err := svc.db.Create(&task).Error; err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	topNPath := writeTestTopN(t, svc, task.ID, []hotspotPayload{
+		{Function: "storage.writeArtifacts", Samples: 42, Percent: 42.0},
+	})
+	if err := svc.db.Create(&minidrop.AnalysisResult{
+		ID:             "res_list_result",
+		TaskID:         task.ID,
+		FlamegraphPath: "tsk_list_result/analysis/flamegraph.svg",
+		TopNPath:       topNPath,
+		Summary:        "done",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}).Error; err != nil {
+		t.Fatalf("create analysis result: %v", err)
+	}
+
+	resp := performJSON(t, router, http.MethodGet, "/api/v1/tasks", nil, http.StatusOK)
+	tasks := resp["tasks"].([]any)
+	if len(tasks) != 1 {
+		t.Fatalf("expected one task, got %d", len(tasks))
+	}
+	result := tasks[0].(map[string]any)["result"].(map[string]any)
+	hotspots := result["hotspots"].([]any)
+	if got := hotspots[0].(map[string]any)["function"].(string); got != "storage.writeArtifacts" {
+		t.Fatalf("expected list result hotspot, got %s", got)
+	}
+}
+
 func writeTestTopN(t *testing.T, svc *Service, taskID string, hotspots []hotspotPayload) string {
 	t.Helper()
 	topNRelPath := filepath.ToSlash(filepath.Join(taskID, "analysis", "topn.json"))

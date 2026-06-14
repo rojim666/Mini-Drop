@@ -493,7 +493,15 @@ func (s *Service) listTasks(c *gin.Context) {
 
 	payload := make([]taskPayload, 0, len(tasks))
 	for _, task := range tasks {
-		payload = append(payload, s.toTaskPayload(c, task, nil, nil))
+		var result *minidrop.AnalysisResult
+		if task.Status == minidrop.TaskStatusDone {
+			loadedResult, err := s.loadAnalysisResult(task.ID)
+			if err != nil {
+				s.log.Warn("load task list result failed", "task_id", task.ID, "error", err)
+			}
+			result = loadedResult
+		}
+		payload = append(payload, s.toTaskPayload(c, task, nil, result))
 	}
 
 	c.JSON(http.StatusOK, gin.H{"tasks": payload})
@@ -1118,6 +1126,18 @@ func (s *Service) loadTaskBundle(taskID string) (minidrop.Task, []minidrop.TaskS
 	}
 
 	return task, events, &result, nil
+}
+
+func (s *Service) loadAnalysisResult(taskID string) (*minidrop.AnalysisResult, error) {
+	var result minidrop.AnalysisResult
+	if err := s.db.First(&result, "task_id = ?", taskID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &result, nil
 }
 
 func (s *Service) toAgentPayload(agent minidrop.Agent) agentPayload {
