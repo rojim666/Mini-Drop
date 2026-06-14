@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import platform
 import subprocess
 import sys
 import urllib.request
@@ -13,6 +14,7 @@ API_PORT = os.environ.get("MINIDROP_API_PORT", "8080")
 API_BASE = os.environ.get("MINIDROP_API_BASE_URL", f"http://127.0.0.1:{API_PORT}").rstrip("/")
 WEB_PORT = os.environ.get("MINIDROP_WEB_PORT", "4173")
 MINIO_PORT = os.environ.get("MINIDROP_MINIO_PORT", "9000")
+DEFAULT_REAL_COLLECTORS = "perf,ebpf-syscall,py-spy"
 
 
 def request_json(path: str) -> dict:
@@ -45,6 +47,66 @@ def run_git(args: list[str]) -> str:
     return result.stdout.strip()
 
 
+def run_command(args: list[str], timeout: int = 60) -> tuple[int, str]:
+    try:
+        result = subprocess.run(
+            args,
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+    except FileNotFoundError as exc:
+        return 127, str(exc)
+    except subprocess.TimeoutExpired as exc:
+        output = (exc.stdout or "") + (exc.stderr or "")
+        return 124, output.strip() or f"{' '.join(args)} timed out"
+
+    output = "\n".join(part for part in [result.stdout.strip(), result.stderr.strip()] if part)
+    return result.returncode, output
+
+
+def run_real_preflight(collectors: str) -> tuple[int, str]:
+    collector_arg = ",".join(part.strip() for part in collectors.split(",") if part.strip())
+    if not collector_arg:
+        collector_arg = DEFAULT_REAL_COLLECTORS
+
+    if platform.system().lower().startswith("windows"):
+        wsl_cmd = [
+            "wsl",
+            "-e",
+            "bash",
+            "-lc",
+            f"cd /mnt/f/Mini-Drop && python3 scripts/demo/check_real_collectors.py --collectors {shell_quote(collector_arg)}",
+        ]
+        return run_command(wsl_cmd, timeout=120)
+
+    bash_cmd = [
+        "bash",
+        "-lc",
+        f"cd {shell_quote(str(ROOT))} && python3 scripts/demo/check_real_collectors.py --collectors {shell_quote(collector_arg)}",
+    ]
+    code, output = run_command(bash_cmd, timeout=90)
+    if code != 127:
+        return code, output
+
+    wsl_cmd = [
+        "wsl",
+        "-e",
+        "bash",
+        "-lc",
+        f"cd /mnt/f/Mini-Drop && python3 scripts/demo/check_real_collectors.py --collectors {shell_quote(collector_arg)}",
+    ]
+    return run_command(wsl_cmd, timeout=120)
+
+
+def shell_quote(value: str) -> str:
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
 def signed_url_ok(url: str) -> bool:
     return f"localhost:{MINIO_PORT}" in url and "X-Amz-Signature=" in url
 
@@ -69,7 +131,7 @@ def markdown_table(headers: list[str], rows: list[list[str]]) -> list[str]:
     return lines
 
 
-def collect_evidence() -> tuple[list[str], bool]:
+def collect_evidence(include_real_preflight: bool = False, real_collectors: str = DEFAULT_REAL_COLLECTORS) -> tuple[list[str], bool]:
     failures: list[str] = []
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     web_url = f"http://localhost:{WEB_PORT}"
@@ -162,6 +224,23 @@ def collect_evidence() -> tuple[list[str], bool]:
     else:
         lines.append("_No completed task samples were available._")
 
+    if include_real_preflight:
+        code, output = run_real_preflight(real_collectors)
+        lines.extend(
+            [
+                "",
+                "## Real Collector Preflight",
+                "",
+                f"- Command status: `{code}`",
+                f"- Collectors: `{real_collectors}`",
+                f"- Result: `{'READY' if code == 0 else 'BLOCKED'}`",
+                "",
+                "```text",
+                output or "(no output)",
+                "```",
+            ]
+        )
+
     lines.extend(
         [
             "",
@@ -203,10 +282,23 @@ def main() -> int:
         default=str(ROOT / "artifacts" / "demo-evidence.md"),
         help="Output Markdown path. Defaults to artifacts/demo-evidence.md.",
     )
+    parser.add_argument(
+        "--include-real-preflight",
+        action="store_true",
+        help="Include WSL/Linux real collector preflight output in the evidence file.",
+    )
+    parser.add_argument(
+        "--real-collectors",
+        default=DEFAULT_REAL_COLLECTORS,
+        help=f"Comma-separated collectors for --include-real-preflight. Defaults to {DEFAULT_REAL_COLLECTORS}.",
+    )
     args = parser.parse_args()
 
     try:
-        lines, ok = collect_evidence()
+        lines, ok = collect_evidence(
+            include_real_preflight=args.include_real_preflight,
+            real_collectors=args.real_collectors,
+        )
     except Exception as exc:
         print(f"collect evidence failed: {exc}", file=sys.stderr)
         return 1

@@ -71,7 +71,14 @@ make demo-down
 `make demo-up` only starts the stack.
 `make demo-evidence` writes `artifacts/demo-evidence.md` from the currently
 running API/Web/Git state so the final recording has a reproducible evidence
-summary.
+summary. To include WSL2 / Linux real-collector prerequisite evidence, run:
+
+```powershell
+.\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -IncludeRealPreflight
+```
+
+If collector dependencies are missing, the evidence file records the blocked
+collector and the exact install or permission command to run next.
 On Windows without `make`, use the PowerShell snapshot helper directly:
 
 ```powershell
@@ -84,6 +91,7 @@ On Linux / WSL2 without `make`, use the Bash helper:
 ```bash
 bash ./scripts/demo/acceptance-snapshot.sh
 bash ./scripts/demo/write-demo-evidence.sh
+bash ./scripts/demo/write-demo-evidence.sh --include-real-preflight
 ```
 
 If the stack is already running but lacks two completed mock tasks, seed and

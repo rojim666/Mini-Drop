@@ -2,7 +2,9 @@ param(
     [int]$ApiPort = $(if ($env:MINIDROP_API_PORT) { [int]$env:MINIDROP_API_PORT } else { 8080 }),
     [int]$WebPort = $(if ($env:MINIDROP_WEB_PORT) { [int]$env:MINIDROP_WEB_PORT } else { 4173 }),
     [int]$MinioPort = $(if ($env:MINIDROP_MINIO_PORT) { [int]$env:MINIDROP_MINIO_PORT } else { 9000 }),
-    [string]$Output = $(if ($env:MINIDROP_DEMO_EVIDENCE_OUTPUT) { $env:MINIDROP_DEMO_EVIDENCE_OUTPUT } else { "artifacts\demo-evidence.md" })
+    [string]$Output = $(if ($env:MINIDROP_DEMO_EVIDENCE_OUTPUT) { $env:MINIDROP_DEMO_EVIDENCE_OUTPUT } else { "artifacts\demo-evidence.md" }),
+    [switch]$IncludeRealPreflight,
+    [string]$RealCollectors = $(if ($env:MINIDROP_REAL_COLLECTORS) { $env:MINIDROP_REAL_COLLECTORS } else { "perf,ebpf-syscall,py-spy" })
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,7 +58,12 @@ $environment = @{
 
 $previous = Set-ScopedEnvironment -Environment $environment
 try {
-    & python (Join-Path $Root "scripts\demo\write_demo_evidence.py") --output $Output
+    $arguments = @((Join-Path $Root "scripts\demo\write_demo_evidence.py"), "--output", $Output)
+    if ($IncludeRealPreflight) {
+        $arguments += @("--include-real-preflight", "--real-collectors", $RealCollectors)
+    }
+
+    & python @arguments
     if ($LASTEXITCODE -ne 0) {
         throw "write_demo_evidence.py exited with code $LASTEXITCODE"
     }

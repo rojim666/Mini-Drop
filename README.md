@@ -496,6 +496,8 @@ Verified in the current Windows workspace:
 - Docker Compose acceptance snapshot with two completed TopN-backed tasks.
 - Markdown demo evidence generation with `make demo-evidence` or
   `python scripts/demo/write_demo_evidence.py`.
+- Optional WSL2 real-collector preflight evidence in
+  `artifacts/demo-evidence.md`.
 - Go API/Agent unit tests.
 - Python Analyzer unit tests.
 - Web production build.
