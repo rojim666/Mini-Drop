@@ -243,6 +243,8 @@ func (s *Service) newRouter() *gin.Engine {
 		v1.GET("/continuous-profiles", s.listContinuousProfiles)
 		v1.POST("/continuous-profiles", s.createContinuousProfile)
 		v1.GET("/continuous-profiles/:id", s.getContinuousProfile)
+		v1.POST("/continuous-profiles/:id/enable", s.enableContinuousProfile)
+		v1.POST("/continuous-profiles/:id/disable", s.disableContinuousProfile)
 		v1.GET("/continuous-profiles/:id/windows", s.listContinuousProfileWindows)
 		v1.GET("/continuous-profiles/:id/trends", s.getContinuousProfileTrends)
 		v1.GET("/audit-logs", s.listAuditLogs)
@@ -618,6 +620,57 @@ func (s *Service) createContinuousProfile(c *gin.Context) {
 func (s *Service) getContinuousProfile(c *gin.Context) {
 	var profile minidrop.ContinuousProfile
 	if err := s.db.First(&profile, "id = ?", c.Param("id")).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			s.writeError(c, http.StatusNotFound, err)
+			return
+		}
+		s.writeError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"profile": s.toContinuousProfilePayload(profile)})
+}
+
+func (s *Service) enableContinuousProfile(c *gin.Context) {
+	s.setContinuousProfileEnabled(c, true)
+}
+
+func (s *Service) disableContinuousProfile(c *gin.Context) {
+	s.setContinuousProfileEnabled(c, false)
+}
+
+func (s *Service) setContinuousProfileEnabled(c *gin.Context, enabled bool) {
+	now := time.Now().UTC()
+	action := "continuous_profile_disabled"
+	reason := "continuous profiling paused by operator"
+	if enabled {
+		action = "continuous_profile_enabled"
+		reason = "continuous profiling resumed by operator"
+	}
+
+	var profile minidrop.ContinuousProfile
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.First(&profile, "id = ?", c.Param("id")).Error; err != nil {
+			return err
+		}
+		if profile.Enabled == enabled {
+			return nil
+		}
+		profile.Enabled = enabled
+		profile.UpdatedAt = now
+		if err := tx.Save(&profile).Error; err != nil {
+			return err
+		}
+		return tx.Create(&minidrop.AuditLog{
+			ID:         minidrop.GenerateID("aud"),
+			EntityType: "continuous_profile",
+			EntityID:   profile.ID,
+			Action:     action,
+			Reason:     reason,
+			CreatedAt:  now,
+		}).Error
+	})
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			s.writeError(c, http.StatusNotFound, err)
 			return

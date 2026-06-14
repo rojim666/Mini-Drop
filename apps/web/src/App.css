@@ -487,7 +487,8 @@ button:disabled {
 }
 
 .card-header button,
-.compare-links button {
+.compare-links button,
+.inline-action {
   border: 0;
   background: transparent;
   color: var(--tc-blue);
@@ -495,8 +496,13 @@ button:disabled {
 }
 
 .card-header button:hover,
-.compare-links button:hover {
+.compare-links button:hover,
+.inline-action:hover {
   color: var(--tc-blue-hover);
+}
+
+.inline-action {
+  height: 28px;
 }
 
 .primary-button,

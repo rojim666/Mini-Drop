@@ -60,6 +60,12 @@ export async function createContinuousProfile(input: CreateContinuousProfileInpu
   });
 }
 
+export async function setContinuousProfileEnabled(profileId: string, enabled: boolean) {
+  return request<{ profile: ContinuousProfile }>(`/api/v1/continuous-profiles/${profileId}/${enabled ? "enable" : "disable"}`, {
+    method: "POST",
+  });
+}
+
 export async function getContinuousProfileWindows(profileId: string, filters: ContinuousWindowFilters = {}) {
   const params = new URLSearchParams();
   if (filters.status && filters.status !== "ALL") {

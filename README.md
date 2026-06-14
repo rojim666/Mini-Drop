@@ -419,6 +419,9 @@ the same function is rising, falling, staying stable, or sitting in a high-risk
 band across windows.
 The trend payload now also includes a deterministic label and reason so the Web
 page can flag sustained high-peak hotspots without a separate heuristic layer.
+Continuous profiles can also be paused and resumed from the plan page; the API
+persists an audit log for each lifecycle change while keeping existing windows
+available for review.
 
 For a Windows-safe demo, choose `collector_type=mock-perf`, enter the printed
 mock target PID, and keep the default `5 分钟` interval. The first window is

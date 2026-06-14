@@ -28,6 +28,7 @@ import {
   getContinuousProfiles,
   getTask,
   getTasks,
+  setContinuousProfileEnabled,
 } from "./api";
 import type {
   Agent,
@@ -291,6 +292,15 @@ function App() {
     }
   }
 
+  async function handleToggleContinuousProfile(profileId: string, enabled: boolean) {
+    try {
+      await setContinuousProfileEnabled(profileId, enabled);
+      await refreshOverview();
+    } catch (toggleError) {
+      setError((toggleError as Error).message);
+    }
+  }
+
   const stats = useMemo(() => {
     const onlineAgents = agents.filter((agent) => agent.status === "ONLINE").length;
     const failedTasks = tasks.filter((task) => task.status === "FAILED").length;
@@ -408,6 +418,7 @@ function App() {
                     setContinuousInput={setContinuousInput}
                     submitting={submitting}
                     onSubmit={handleCreateContinuousProfile}
+                    onToggleProfile={handleToggleContinuousProfile}
                     onOpenTask={(taskId) => {
                       setSelectedTaskId(taskId);
                       setActiveNav("history");
@@ -980,6 +991,7 @@ function SchedulePage({
   setContinuousInput,
   submitting,
   onSubmit,
+  onToggleProfile,
   onOpenTask,
 }: {
   profiles: ContinuousProfile[];
@@ -995,6 +1007,7 @@ function SchedulePage({
   setContinuousInput: React.Dispatch<React.SetStateAction<CreateContinuousProfileInput>>;
   submitting: boolean;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onToggleProfile: (profileId: string, enabled: boolean) => Promise<void>;
   onOpenTask: (taskId: string) => void;
 }) {
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? null;
@@ -1019,12 +1032,13 @@ function SchedulePage({
                 <th>采集器</th>
                 <th>间隔</th>
                 <th>状态</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
               {profiles.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <EmptyBlock text="暂无连续计划，请先创建一个 5 分钟窗口计划。" />
                   </td>
                 </tr>
@@ -1040,6 +1054,18 @@ function SchedulePage({
                     <td>{profile.collector_type}</td>
                     <td>{profile.interval_sec}s</td>
                     <td>{profile.enabled ? "运行中" : "已停用"}</td>
+                    <td>
+                      <button
+                        className="inline-action"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void onToggleProfile(profile.id, !profile.enabled);
+                        }}
+                      >
+                        {profile.enabled ? "停用" : "启用"}
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}

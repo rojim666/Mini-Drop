@@ -572,6 +572,49 @@ func TestContinuousWindowTaskStatusSyncsToWindow(t *testing.T) {
 	}
 }
 
+func TestContinuousProfileEnableDisableWritesAudit(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "agt_schedule_toggle",
+		"hostname": "demo-host",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusOK)
+
+	createResp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles", map[string]any{
+		"name":                "toggle profile",
+		"target_pid":          4321,
+		"target_agent_id":     "agt_schedule_toggle",
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+		"interval_sec":        300,
+	}, http.StatusCreated)
+	profileID := createResp["profile"].(map[string]any)["id"].(string)
+
+	disableResp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles/"+profileID+"/disable", nil, http.StatusOK)
+	if got := disableResp["profile"].(map[string]any)["enabled"].(bool); got {
+		t.Fatal("expected disabled profile")
+	}
+
+	var disabledAudit minidrop.AuditLog
+	if err := svc.db.First(&disabledAudit, "entity_type = ? AND entity_id = ? AND action = ?", "continuous_profile", profileID, "continuous_profile_disabled").Error; err != nil {
+		t.Fatalf("expected disabled audit log: %v", err)
+	}
+
+	enableResp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles/"+profileID+"/enable", nil, http.StatusOK)
+	if got := enableResp["profile"].(map[string]any)["enabled"].(bool); !got {
+		t.Fatal("expected enabled profile")
+	}
+
+	var enabledAudit minidrop.AuditLog
+	if err := svc.db.First(&enabledAudit, "entity_type = ? AND entity_id = ? AND action = ?", "continuous_profile", profileID, "continuous_profile_enabled").Error; err != nil {
+		t.Fatalf("expected enabled audit log: %v", err)
+	}
+}
+
 func TestContinuousWindowFiltersScopeTimeline(t *testing.T) {
 	svc := newTestService(t)
 	router := svc.Router()
