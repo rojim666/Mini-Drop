@@ -185,14 +185,16 @@ make smoke-real COLLECTOR_TYPE=py-spy
 - API 创建 profile 和 window。
 - 每个到期 window materialize 为普通 task。
 - 结果复用原有 Agent、Analyzer、火焰图、TopN 和归因展示。
+- API 返回最近 24 个窗口的聚合摘要：总数、完成数、失败数、活跃数、等待数、最新状态和完成率。
+- Web 在窗口时间轴表格上方展示摘要，便于 demo 评审快速判断持续采样健康度。
 
-当前状态：已完成最小版。
+当前状态：已完成最小版，并补齐窗口聚合摘要和列表式时间轴。
 
 下一步增强：
 
 - 增加更完整的调度策略。
-- 增加窗口聚合和 baseline 对比。
-- 支持按时间轴浏览多个窗口。
+- 增加 baseline 对比。
+- 支持更细的时间范围筛选和窗口 drill-down。
 
 ## 阶段 9：智能归因
 

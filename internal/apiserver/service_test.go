@@ -493,6 +493,16 @@ func TestCreateContinuousProfileCreatesInitialWindow(t *testing.T) {
 	if got := window["status"].(string); got != string(minidrop.TaskStatusPending) {
 		t.Fatalf("expected pending window, got %s", got)
 	}
+	summary := windowsResp["summary"].(map[string]any)
+	if got := summary["total_windows"].(float64); got != 1 {
+		t.Fatalf("expected 1 total window, got %v", got)
+	}
+	if got := summary["pending_windows"].(float64); got != 1 {
+		t.Fatalf("expected 1 pending window, got %v", got)
+	}
+	if got := summary["latest_status"].(string); got != string(minidrop.TaskStatusPending) {
+		t.Fatalf("expected latest pending status, got %s", got)
+	}
 }
 
 func TestContinuousWindowTaskStatusSyncsToWindow(t *testing.T) {
@@ -549,6 +559,16 @@ func TestContinuousWindowTaskStatusSyncsToWindow(t *testing.T) {
 	windows = windowsResp["windows"].([]any)
 	if got := windows[0].(map[string]any)["status"].(string); got != string(minidrop.TaskStatusDone) {
 		t.Fatalf("expected done window, got %s", got)
+	}
+	summary := windowsResp["summary"].(map[string]any)
+	if got := summary["done_windows"].(float64); got != 1 {
+		t.Fatalf("expected 1 done window, got %v", got)
+	}
+	if got := summary["latest_status"].(string); got != string(minidrop.TaskStatusDone) {
+		t.Fatalf("expected latest done status, got %s", got)
+	}
+	if got := summary["done_ratio"].(float64); got != 1 {
+		t.Fatalf("expected done ratio 1, got %v", got)
 	}
 }
 

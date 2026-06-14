@@ -406,6 +406,11 @@ profile uses fixed 5-minute windows (`300s`) and materializes each due window as
 a normal task, so the existing Agent, Analyzer, flamegraph, TopN, and attribution
 views are reused.
 
+The window list endpoint also returns a small aggregate summary for the latest
+24 windows: total, done, failed, active, pending, latest status, latest range,
+and done ratio. The Web page renders that summary above the window table so a
+reviewer can verify continuous profiling health without opening every task.
+
 For a Windows-safe demo, choose `collector_type=mock-perf`, enter the printed
 mock target PID, and keep the default `5 分钟` interval. The first window is
 created immediately so the demo does not need to wait five minutes; later

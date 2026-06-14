@@ -129,6 +129,19 @@ export interface ContinuousWindow {
   updated_at: string;
 }
 
+export interface ContinuousWindowSummary {
+  total_windows: number;
+  done_windows: number;
+  failed_windows: number;
+  running_windows: number;
+  pending_windows: number;
+  latest_status: "NONE" | "PENDING" | "RUNNING" | "UPLOADING" | "DONE" | "FAILED";
+  latest_status_reason: string;
+  latest_window_start_at?: string;
+  latest_window_end_at?: string;
+  done_ratio: number;
+}
+
 export interface CreateContinuousProfileInput {
   name: string;
   target_pid: number;

@@ -3,6 +3,7 @@ import type {
   AuditLog,
   ContinuousProfile,
   ContinuousWindow,
+  ContinuousWindowSummary,
   CreateContinuousProfileInput,
   CreateTaskInput,
   Task,
@@ -58,7 +59,9 @@ export async function createContinuousProfile(input: CreateContinuousProfileInpu
 }
 
 export async function getContinuousProfileWindows(profileId: string) {
-  return request<{ windows: ContinuousWindow[] }>(`/api/v1/continuous-profiles/${profileId}/windows`);
+  return request<{ windows: ContinuousWindow[]; summary: ContinuousWindowSummary }>(
+    `/api/v1/continuous-profiles/${profileId}/windows`,
+  );
 }
 
 export async function getAuditLogs() {

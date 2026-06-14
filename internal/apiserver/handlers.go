@@ -72,6 +72,19 @@ type continuousWindowPayload struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
+type continuousWindowSummaryPayload struct {
+	TotalWindows        int        `json:"total_windows"`
+	DoneWindows         int        `json:"done_windows"`
+	FailedWindows       int        `json:"failed_windows"`
+	RunningWindows      int        `json:"running_windows"`
+	PendingWindows      int        `json:"pending_windows"`
+	LatestStatus        string     `json:"latest_status"`
+	LatestStatusReason  string     `json:"latest_status_reason"`
+	LatestWindowStartAt *time.Time `json:"latest_window_start_at,omitempty"`
+	LatestWindowEndAt   *time.Time `json:"latest_window_end_at,omitempty"`
+	DoneRatio           float64    `json:"done_ratio"`
+}
+
 type apiError struct {
 	Error string `json:"error"`
 }
@@ -587,7 +600,10 @@ func (s *Service) listContinuousProfileWindows(c *gin.Context) {
 		payload = append(payload, s.toContinuousWindowPayload(window))
 	}
 
-	c.JSON(http.StatusOK, gin.H{"windows": payload})
+	c.JSON(http.StatusOK, gin.H{
+		"windows": payload,
+		"summary": summarizeContinuousWindows(windows),
+	})
 }
 
 func (s *Service) listAuditLogs(c *gin.Context) {
@@ -1071,6 +1087,38 @@ func (s *Service) toContinuousWindowPayload(window minidrop.ContinuousProfileWin
 		CreatedAt:     window.CreatedAt,
 		UpdatedAt:     window.UpdatedAt,
 	}
+}
+
+func summarizeContinuousWindows(windows []minidrop.ContinuousProfileWindow) continuousWindowSummaryPayload {
+	summary := continuousWindowSummaryPayload{
+		TotalWindows: len(windows),
+		LatestStatus: "NONE",
+	}
+	if len(windows) == 0 {
+		return summary
+	}
+
+	latest := windows[0]
+	summary.LatestStatus = string(latest.Status)
+	summary.LatestStatusReason = latest.StatusReason
+	summary.LatestWindowStartAt = &latest.WindowStartAt
+	summary.LatestWindowEndAt = &latest.WindowEndAt
+
+	for _, window := range windows {
+		switch window.Status {
+		case minidrop.TaskStatusDone:
+			summary.DoneWindows++
+		case minidrop.TaskStatusFailed:
+			summary.FailedWindows++
+		case minidrop.TaskStatusRunning, minidrop.TaskStatusUploading:
+			summary.RunningWindows++
+		case minidrop.TaskStatusPending:
+			summary.PendingWindows++
+		}
+	}
+
+	summary.DoneRatio = float64(summary.DoneWindows) / float64(summary.TotalWindows)
+	return summary
 }
 
 func (s *Service) toTaskResultPayload(c *gin.Context, task minidrop.Task, result minidrop.AnalysisResult) taskResultPayload {

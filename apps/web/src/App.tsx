@@ -33,6 +33,7 @@ import type {
   AuditLog,
   ContinuousProfile,
   ContinuousWindow,
+  ContinuousWindowSummary,
   CreateContinuousProfileInput,
   CreateTaskInput,
   Hotspot,
@@ -74,6 +75,7 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [profiles, setProfiles] = useState<ContinuousProfile[]>([]);
   const [windows, setWindows] = useState<ContinuousWindow[]>([]);
+  const [windowSummary, setWindowSummary] = useState<ContinuousWindowSummary | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -182,6 +184,7 @@ function App() {
   useEffect(() => {
     if (!selectedProfileId) {
       setWindows([]);
+      setWindowSummary(null);
       return;
     }
 
@@ -191,6 +194,7 @@ function App() {
         const data = await getContinuousProfileWindows(selectedProfileId);
         if (alive) {
           setWindows(data.windows);
+          setWindowSummary(data.summary ?? null);
         }
       } catch (profileError) {
         if (alive) {
@@ -378,6 +382,7 @@ function App() {
                     selectedProfileId={selectedProfileId}
                     setSelectedProfileId={setSelectedProfileId}
                     windows={windows}
+                    windowSummary={windowSummary}
                     agents={agents}
                     continuousInput={continuousInput}
                     setContinuousInput={setContinuousInput}
@@ -946,6 +951,7 @@ function SchedulePage({
   selectedProfileId,
   setSelectedProfileId,
   windows,
+  windowSummary,
   agents,
   continuousInput,
   setContinuousInput,
@@ -957,6 +963,7 @@ function SchedulePage({
   selectedProfileId: string | null;
   setSelectedProfileId: (profileId: string) => void;
   windows: ContinuousWindow[];
+  windowSummary: ContinuousWindowSummary | null;
   agents: Agent[];
   continuousInput: CreateContinuousProfileInput;
   setContinuousInput: React.Dispatch<React.SetStateAction<CreateContinuousProfileInput>>;
@@ -1072,6 +1079,38 @@ function SchedulePage({
 
       <div className="console-card">
         <CardHeader title={selectedProfile ? `5 分钟窗口 - ${selectedProfile.name}` : "5 分钟窗口"} />
+        <div className="window-summary-strip">
+          <div>
+            <span>总窗口</span>
+            <strong>{windowSummary?.total_windows ?? windows.length}</strong>
+          </div>
+          <div>
+            <span>已完成</span>
+            <strong>{windowSummary?.done_windows ?? 0}</strong>
+          </div>
+          <div>
+            <span>失败</span>
+            <strong>{windowSummary?.failed_windows ?? 0}</strong>
+          </div>
+          <div>
+            <span>完成率</span>
+            <strong>{formatPercent(windowSummary?.done_ratio ?? 0)}</strong>
+          </div>
+          <div>
+            <span>最新状态</span>
+            <strong>
+              <StatusTag value={windowSummary?.latest_status ?? "NONE"} />
+            </strong>
+          </div>
+          <div className="window-summary-range">
+            <span>最近窗口</span>
+            <strong>
+              {windowSummary?.latest_window_start_at && windowSummary.latest_window_end_at
+                ? `${formatDate(windowSummary.latest_window_start_at)} - ${formatDate(windowSummary.latest_window_end_at)}`
+                : "暂无"}
+            </strong>
+          </div>
+        </div>
         <table className="data-table">
           <thead>
             <tr>
@@ -1749,6 +1788,7 @@ function EmptyBlock({ text }: { text: string }) {
 
 function statusText(value: string) {
   const map: Record<string, string> = {
+    NONE: "暂无",
     ONLINE: "在线",
     OFFLINE: "离线",
     UNKNOWN: "未知",
@@ -1759,6 +1799,13 @@ function statusText(value: string) {
     FAILED: "失败",
   };
   return map[value] ?? value;
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) {
+    return "0%";
+  }
+  return `${Math.round(value * 100)}%`;
 }
 
 function evidenceKindText(value: string) {
