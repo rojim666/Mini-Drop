@@ -181,6 +181,7 @@ bash ./scripts/demo/stop-local.sh
 Run preflight checks before creating a real collector task:
 
 ```bash
+make real-preflight
 make real-check
 python3 scripts/demo/check_perf_env.py --pid <target-pid>
 python3 scripts/demo/check_ebpf_env.py --pid <target-pid>
@@ -189,6 +190,9 @@ python3 scripts/demo/check_pyspy_env.py --pid <target-pid>
 
 `make real-check` runs all three checks and prints a ready/blocked summary.
 Use the individual scripts when you want the full output for one collector.
+`make real-preflight` writes `artifacts/real-collector-preflight.md` with the
+same readiness summary and the exact install or permission commands that would
+unblock the current host.
 
 Typical fixes:
 

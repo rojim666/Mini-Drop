@@ -57,6 +57,7 @@ be finished before lower items are started.
 ## P1: Real perf Collector
 
 - [ ] Validate Linux runtime permissions.
+- [x] Write a repeatable WSL2 / Linux real-collector preflight report.
 - [x] Check `perf` availability.
 - [x] Detect `perf_event_paranoid`.
 - [x] Implement `perf record`.

@@ -314,6 +314,7 @@ Before starting the real collector, run the environment check inside WSL2 /
 Linux:
 
 ```bash
+make real-preflight
 make real-check
 python3 scripts/demo/check_perf_env.py
 python3 scripts/demo/check_perf_env.py --pid <target-pid>
@@ -323,6 +324,13 @@ python3 scripts/demo/check_perf_env.py --pid <target-pid>
 The individual checks report Linux/runtime, tool availability, permission
 settings such as `perf_event_paranoid`, target PID existence, and a short smoke
 command when a PID is provided.
+`make real-preflight` writes `artifacts/real-collector-preflight.md` with the
+same readiness output plus the exact install and permission commands to apply.
+On Windows it enters WSL2 automatically when `wsl.exe` is available.
+It treats missing host dependencies as a generated `BLOCKED` report rather than
+a script crash; use `.\scripts\demo\prepare-real-collectors.ps1 -Strict` or
+`bash ./scripts/demo/prepare-real-collectors.sh --strict` when you want blocked
+collectors to fail CI.
 
 The smoke helper can also request the real collector:
 
@@ -575,6 +583,7 @@ Verified in the current Windows workspace:
   `python scripts/demo/write_demo_evidence.py`.
 - Recording and submission notes generation with `make recording-checklist` and
   `make submission-notes`.
+- WSL2 real collector readiness report generation with `make real-preflight`.
 - Optional WSL2 real-collector preflight evidence in
   `artifacts/demo-evidence.md`.
 - Go API/Agent unit tests.

@@ -159,6 +159,7 @@ Say:
 If WSL2 dependencies are later installed, run:
 
 ```bash
+make real-preflight
 make real-check
 COLLECTOR_TYPE=perf bash ./scripts/demo/start-local.sh
 make smoke-real COLLECTOR_TYPE=perf
