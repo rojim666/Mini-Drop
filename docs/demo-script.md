@@ -18,6 +18,7 @@ Generate acceptance and evidence output:
 ```powershell
 .\scripts\demo\acceptance-snapshot.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -SeedTasks
 .\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -IncludeRealPreflight
+.\scripts\demo\write-recording-checklist.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
 ```
 
 Open these URLs before recording:
@@ -26,6 +27,7 @@ Open these URLs before recording:
 - API health: <http://localhost:18080/healthz>
 - MinIO console: <http://localhost:19001>
 - Evidence file: `artifacts/demo-evidence.md`
+- Recording checklist: `artifacts/recording-checklist.md`
 
 Expected preflight state on the current machine:
 

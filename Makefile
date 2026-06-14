@@ -1,4 +1,4 @@
-.PHONY: help demo demo-up demo-down local local-down test build web-build docs-check smoke-local smoke-real smoke-demo smoke-demo-minio smoke-demo-fail smoke-demo-offline acceptance-snapshot demo-evidence real-check perf-check ebpf-check pyspy-check
+.PHONY: help demo demo-up demo-down local local-down test build web-build docs-check smoke-local smoke-real smoke-demo smoke-demo-minio smoke-demo-fail smoke-demo-offline acceptance-snapshot demo-evidence recording-checklist real-check perf-check ebpf-check pyspy-check
 
 help:
 	@echo "Mini-Drop commands:"
@@ -11,6 +11,7 @@ help:
 	@echo "  make smoke-demo-offline  Verify Docker Compose agent offline path"
 	@echo "  make acceptance-snapshot  Print compose demo acceptance evidence"
 	@echo "  make demo-evidence  Write artifacts/demo-evidence.md from live demo state"
+	@echo "  make recording-checklist  Write artifacts/recording-checklist.md"
 	@echo "  make local       Start the local Linux/WSL demo stack"
 	@echo "  make local-down  Stop the local Linux/WSL demo stack"
 	@echo "  make test        Run Go tests"
@@ -50,6 +51,9 @@ acceptance-snapshot:
 
 demo-evidence:
 	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\write-demo-evidence.ps1
+
+recording-checklist:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\write-recording-checklist.ps1
 
 perf-check:
 	@powershell -NoProfile -Command "if ($$env:MINIDROP_TARGET_PID) { python scripts\\demo\\check_perf_env.py --pid $$env:MINIDROP_TARGET_PID } else { python scripts\\demo\\check_perf_env.py }"

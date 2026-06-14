@@ -89,6 +89,12 @@ To print a compact acceptance snapshot before recording or presenting the demo:
 make acceptance-snapshot
 ```
 
+To write a page-by-page recording checklist:
+
+```bash
+make recording-checklist
+```
+
 For the recommended 10 to 15 minute recording flow, use the final demo script:
 
 - [Final demo script](docs/demo-script.md)
@@ -97,6 +103,7 @@ On Windows PowerShell without `make`, run the helper directly:
 
 ```powershell
 .\scripts\demo\acceptance-snapshot.ps1
+.\scripts\demo\write-recording-checklist.ps1
 ```
 
 For an alternate-port compose stack:
