@@ -5,110 +5,124 @@ be finished before lower items are started.
 
 ## P0: Repository Foundation
 
-- [ ] Create `apps/api-server`.
-- [ ] Create `apps/web`.
-- [ ] Create `apps/agent`.
-- [ ] Create `apps/analyzer`.
-- [ ] Create `deploy/docker-compose.yml`.
-- [ ] Create `scripts/demo`.
-- [ ] Add root `.gitignore`.
-- [ ] Add root Makefile with `make demo`.
+- [x] Create `apps/api-server`.
+- [x] Create `apps/web`.
+- [x] Create `apps/agent`.
+- [x] Create `apps/analyzer`.
+- [x] Create `deploy/docker-compose.yml`.
+- [x] Create `scripts/demo`.
+- [x] Add root `.gitignore`.
+- [x] Add root Makefile with `make demo`.
 
 ## P0: API Server Mock Slice
 
-- [ ] Initialize Go module.
-- [ ] Add `/healthz`.
-- [ ] Add SQLite or PostgreSQL connection.
-- [ ] Create initial tables: `agents`, `tasks`, `task_status_events`, `audit_logs`, `analysis_results`.
-- [ ] Add `POST /api/v1/tasks`.
-- [ ] Add `GET /api/v1/tasks`.
-- [ ] Add `GET /api/v1/tasks/:id`.
-- [ ] Add task status transition helper.
+- [x] Initialize Go module.
+- [x] Add `/healthz`.
+- [x] Add SQLite or PostgreSQL connection.
+- [x] Create initial tables: `agents`, `tasks`, `task_status_events`, `audit_logs`, `analysis_results`.
+- [x] Add `POST /api/v1/tasks`.
+- [x] Add `GET /api/v1/tasks`.
+- [x] Add `GET /api/v1/tasks/:id`.
+- [x] Add task status transition helper.
 
 ## P0: Agent Mock Slice
 
-- [ ] Initialize Agent app.
-- [ ] Register Agent with API Server.
-- [ ] Send heartbeat every 5 seconds.
-- [ ] Poll for pending task or accept mock task.
-- [ ] Mark task `RUNNING`.
-- [ ] Produce mock artifact.
-- [ ] Mark task `UPLOADING`.
-- [ ] Mark task `DONE`.
+- [x] Initialize Agent app.
+- [x] Register Agent with API Server.
+- [x] Send heartbeat every 5 seconds.
+- [x] Poll for pending task or accept mock task.
+- [x] Mark task `RUNNING`.
+- [x] Produce mock artifact.
+- [x] Mark task `UPLOADING`.
+- [x] Mark task `DONE`.
 
 ## P0: Analyzer Mock Slice
 
-- [ ] Initialize Analyzer app.
-- [ ] Add command line entry: `analyzer --task-id <id>`.
-- [ ] Generate mock flamegraph SVG.
-- [ ] Generate mock TopN JSON.
-- [ ] Save artifact path to API Server or shared storage.
+- [x] Initialize Analyzer app.
+- [x] Add command line entry: `analyzer --task-id <id>`.
+- [x] Generate mock flamegraph SVG.
+- [x] Generate mock TopN JSON.
+- [x] Save artifact path to API Server or shared storage.
 
 ## P0: Web Mock Slice
 
-- [ ] Initialize Web app.
-- [ ] Create Agent list view.
-- [ ] Create task form.
-- [ ] Create task list view.
-- [ ] Create task detail view.
-- [ ] Render mock SVG flamegraph.
-- [ ] Poll task status.
+- [x] Initialize Web app.
+- [x] Create Agent list view.
+- [x] Create task form.
+- [x] Create task list view.
+- [x] Create task detail view.
+- [x] Render mock SVG flamegraph.
+- [x] Poll task status.
 
 ## P1: Real perf Collector
 
 - [ ] Validate Linux runtime permissions.
-- [ ] Check `perf` availability.
-- [ ] Detect `perf_event_paranoid`.
-- [ ] Implement `perf record`.
-- [ ] Implement timeout and process cleanup.
-- [ ] Convert `perf.data` to collapsed stacks.
-- [ ] Generate SVG flamegraph.
-- [ ] Show real flamegraph in Web.
+- [x] Check `perf` availability.
+- [x] Detect `perf_event_paranoid`.
+- [x] Implement `perf record`.
+- [x] Implement timeout and process cleanup.
+- [x] Convert `perf.data` to collapsed stacks.
+- [x] Generate SVG flamegraph.
+- [x] Show real flamegraph in Web.
+- [x] Add a stable CPU workload for perf demo validation.
+- [x] Add real collector smoke helper for WSL2 / Linux.
+- [x] Add optional `stackcollapse-perf.pl` and `flamegraph.pl` analyzer integration.
+
+## P1: Delivery Baseline
+
+- [x] Add PostgreSQL deployment mode for API Server.
+- [x] Add MinIO object storage and signed artifact URLs.
+- [x] Add compose-side readiness checks for Postgres and Web.
+- [x] Write one-click demo docs for compose and WSL2 flows.
 
 ## P1: Observability
 
-- [ ] Add structured logs to API Server.
-- [ ] Add structured logs to Agent.
-- [ ] Add structured logs to Analyzer.
-- [ ] Persist all status transitions.
-- [ ] Persist Agent offline audit log.
-- [ ] Persist Agent recovery audit log.
+- [x] Add structured logs to API Server.
+- [x] Add structured logs to Agent.
+- [x] Add structured logs to Analyzer.
+- [x] Log task lifecycle transitions and collector milestones.
+- [x] Persist all status transitions.
+- [x] Persist Agent offline audit log.
+- [x] Persist Agent recovery audit log.
 
 ## P1: Tests
 
-- [ ] E2E normal path: valid PID -> flamegraph.
-- [ ] E2E error path: invalid PID -> FAILED with reason.
-- [ ] E2E error path: Agent offline -> FAILED or no dispatch with reason.
-- [ ] Unit tests for status transition helper.
-- [ ] Unit tests for input validation.
+- [x] E2E normal path: valid PID -> flamegraph.
+- [x] E2E error path: invalid PID -> FAILED with reason.
+- [x] E2E error path: Agent offline -> FAILED or no dispatch with reason.
+- [x] Unit tests for status transition helper.
+- [x] Unit tests for input validation.
 
 ## P2: eBPF Collector
 
-- [ ] Choose `bpftrace`, `bcc`, or `libbpf-go`.
-- [ ] Implement one kernel probe.
-- [ ] Add demo workload using `dd`, `fio`, or `stress-ng`.
-- [ ] Parse eBPF output into JSON.
-- [ ] Display eBPF visualization in Web.
+- [x] Choose `bpftrace`, `bcc`, or `libbpf-go`.
+- [x] Implement one kernel probe.
+- [x] Add demo workload using `dd`, `fio`, or `stress-ng`.
+- [x] Parse eBPF output into JSON.
+- [x] Display eBPF visualization in Web.
 
 ## P2: User-Space Language Collector
 
-- [ ] Choose `py-spy` or `pprof HTTP`.
-- [ ] Add demo target program.
-- [ ] Generate collector output.
-- [ ] Display language-specific visualization.
+- [x] Choose `py-spy` or `pprof HTTP`.
+- [x] Add demo target program.
+- [x] Generate collector output.
+- [x] Display language-specific visualization.
 
 ## P2: Continuous Profiling
 
-- [ ] Add low-frequency recurring sampling.
-- [ ] Store time-windowed artifacts.
-- [ ] Add Web time window selector.
-- [ ] Display one 5-minute window result.
+- [x] Add low-frequency recurring sampling.
+- [x] Store time-windowed artifacts.
+- [x] Add Web time window selector.
+- [x] Display one 5-minute window result.
 
 ## P3: AI Attribution
 
-- [ ] Define attribution tool interfaces.
-- [ ] Create baseline comparison data.
-- [ ] Implement attribution prompt and tool loop.
-- [ ] Store attribution result with evidence.
-- [ ] Write small evaluation report.
-
+- [x] Define attribution result contract.
+- [x] Generate rule-based attribution from TopN hotspots.
+- [x] Display attribution conclusion, confidence, evidence, and recommendations in Web.
+- [x] Add small rule evaluation samples.
+- [x] Define attribution tool interfaces.
+- [x] Create baseline comparison data.
+- [x] Implement attribution prompt and tool loop.
+- [x] Store attribution result with evidence.
+- [x] Write small evaluation report.

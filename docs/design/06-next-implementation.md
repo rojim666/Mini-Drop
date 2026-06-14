@@ -1,58 +1,37 @@
 # 06. Next Implementation
 
-## 下一步只做一件事
+## Focus
 
-实现 mock 端到端链路。
+Keep moving from the current demo to the next most useful end-to-end slice:
 
-目标不是马上接 `perf`，而是先证明系统能从 Web/接口层一路走到 Analyzer，并把结果展示回来。
+1. Make the demo easy to start on Windows with one command.
+2. Keep WSL2 / Linux real collectors runnable and clearly documented.
+3. Keep the acceptance path explicit: mock compose demo, then real `perf`, then the other collectors.
 
-## Mock 链路定义
+## Current State
 
-```text
-POST /api/v1/tasks
-  -> create task PENDING
-  -> mock agent marks RUNNING
-  -> mock agent writes fake artifact
-  -> mock analyzer writes fake flamegraph.svg and topn.json
-  -> task becomes DONE
-  -> Web can read and display result
-```
+The repository now has:
 
-## 为什么先 mock
+- a mock compose demo with PostgreSQL, MinIO signed artifact URLs, and two seeded DONE tasks for comparison
+- a native local demo for Windows mock profiling
+- a native Linux / WSL2 demo path for `perf`, `ebpf-syscall`, and `py-spy`
+- per-collector preflight scripts
+- a runbook that separates compose and Linux flows
 
-真实 `perf`、eBPF、容器权限、Linux 内核参数都会带来环境变量。如果第一天就碰这些，容易被底层问题卡住，看不到系统整体。
+## Next Implementation Target
 
-Mock 链路先把产品骨架跑起来，之后替换采集器即可。
+The next slice should improve demo readiness rather than add another collector:
 
-## 第一批代码任务
+1. Keep Windows compose startup one-command and smoke-verified.
+2. Keep Linux / WSL2 startup one-command for the real collectors.
+3. Keep the runbook and README synchronized with the actual scripts.
 
-1. API Server:
-   - `/healthz`
-   - `POST /api/v1/tasks`
-   - `GET /api/v1/tasks`
-   - `GET /api/v1/tasks/:id`
-   - 状态迁移 helper
+## Acceptance Shape
 
-2. Agent:
-   - 心跳接口先 mock。
-   - 能把新任务推进到 `DONE`。
+This stage is complete when:
 
-3. Analyzer:
-   - 生成一个固定 SVG。
-   - 生成一个固定 TopN JSON。
-
-4. Web:
-   - 任务表单。
-   - 任务列表。
-   - 任务详情。
-
-## 验收口径
-
-一次演示能完成：
-
-1. 创建任务。
-2. 看到任务状态变化。
-3. 打开任务详情。
-4. 看到假火焰图。
-5. 看到假 TopN 热点。
-
+- `.\scripts\demo\start-compose.ps1` starts the compose stack, seeds comparison-ready mock tasks, and smoke-tests MinIO signed URLs.
+- `.\scripts\demo\acceptance-snapshot.ps1` gives Windows users the same pre-recording evidence as `make acceptance-snapshot`.
+- `bash ./scripts/demo/start-local.sh` still works for Linux / WSL2 mock or real collectors.
+- `docs/demo-runbook.md` matches the real commands and ports.
+- README points users to the right path for Windows compose and WSL2 real collection.
