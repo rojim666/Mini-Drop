@@ -1500,12 +1500,16 @@ func classifyTrend(peak, delta float64) (string, string, string) {
 	switch {
 	case peak >= 50:
 		return "持续高位", "critical", "峰值占比达到 50% 以上，建议优先查看对应窗口火焰图"
+	case peak >= 35:
+		return "基线偏高", "warning", "峰值占比达到 35% 以上，建议结合 baseline 偏差判断是否需要排查"
 	case delta >= 15:
 		return "明显升高", "warning", "最新窗口相对最早窗口上升 15 个百分点以上"
 	case delta <= -15:
 		return "明显回落", "success", "最新窗口相对最早窗口下降 15 个百分点以上"
+	case delta >= 8 || delta <= -8:
+		return "小幅波动", "normal", "最近窗口间占比变化达到 8 个百分点以上，但未触发明显趋势阈值"
 	default:
-		return "平稳", "normal", "最近窗口间占比变化未超过 15 个百分点"
+		return "平稳", "normal", "最近窗口间占比变化未超过 8 个百分点"
 	}
 }
 

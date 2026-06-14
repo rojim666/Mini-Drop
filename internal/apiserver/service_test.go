@@ -914,6 +914,38 @@ func TestListTasksIncludesDoneTaskResultsForAggregation(t *testing.T) {
 	}
 }
 
+func TestClassifyTrendUsesFineGrainedThresholds(t *testing.T) {
+	tests := []struct {
+		name         string
+		peak         float64
+		delta        float64
+		wantLabel    string
+		wantSeverity string
+	}{
+		{name: "critical high peak", peak: 50, delta: 0, wantLabel: "持续高位", wantSeverity: "critical"},
+		{name: "elevated peak", peak: 35, delta: 0, wantLabel: "基线偏高", wantSeverity: "warning"},
+		{name: "rising", peak: 20, delta: 15, wantLabel: "明显升高", wantSeverity: "warning"},
+		{name: "falling", peak: 20, delta: -15, wantLabel: "明显回落", wantSeverity: "success"},
+		{name: "minor change", peak: 20, delta: 8, wantLabel: "小幅波动", wantSeverity: "normal"},
+		{name: "stable", peak: 20, delta: 7.9, wantLabel: "平稳", wantSeverity: "normal"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			label, severity, reason := classifyTrend(tt.peak, tt.delta)
+			if label != tt.wantLabel {
+				t.Fatalf("expected label %s, got %s", tt.wantLabel, label)
+			}
+			if severity != tt.wantSeverity {
+				t.Fatalf("expected severity %s, got %s", tt.wantSeverity, severity)
+			}
+			if reason == "" {
+				t.Fatal("expected non-empty reason")
+			}
+		})
+	}
+}
+
 func writeTestTopN(t *testing.T, svc *Service, taskID string, hotspots []hotspotPayload) string {
 	t.Helper()
 	topNRelPath := filepath.ToSlash(filepath.Join(taskID, "analysis", "topn.json"))
