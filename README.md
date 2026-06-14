@@ -536,7 +536,7 @@ The repository still follows the documented roadmap:
 1. Run the real collector smoke helpers in WSL2 / Ubuntu to validate kernel permissions.
 2. Validate the optional standard FlameGraph scripts in the WSL2 / Linux demo path.
 3. Replace the deterministic attribution loop with a remote LLM call and wire `get_resource_timeline` to real metrics.
-4. Replace the minimal continuous profiling scheduler with a full cron/baseline implementation.
+4. Harden the lightweight cron parser with production-grade cron-library semantics if the demo needs more cron dialects.
 
 ## Acceptance Status
 

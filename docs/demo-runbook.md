@@ -125,8 +125,8 @@ bash ./scripts/demo/acceptance-snapshot.sh --seed-tasks
 `make acceptance-snapshot` prints the same compact pre-recording checklist
 covering API health, Web reachability, online Agents, completed tasks, signed
 artifact URLs, whether the task-comparison page has enough completed
-TopN-backed tasks, and whether continuous profiling has materialized windows
-and trend data.
+TopN-backed tasks, whether continuous profiling has materialized windows and
+trend data, and each sampled profile's interval/cron/stagger schedule policy.
 
 ## 2. WSL2 / Linux Real Collector Demo
 

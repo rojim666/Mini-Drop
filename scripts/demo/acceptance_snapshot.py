@@ -30,6 +30,17 @@ def signed_url_ok(url: str) -> bool:
     return f"localhost:{MINIO_PORT}" in url and "X-Amz-Signature=" in url
 
 
+def schedule_summary(profile: dict) -> str:
+    mode = str(profile.get("schedule_mode") or "interval")
+    stagger = int(profile.get("stagger_sec") or 0)
+    suffix = f"+{stagger}s" if stagger else "no-stagger"
+    if mode == "cron":
+        expression = str(profile.get("cron_expression") or "-").replace(" ", "_")
+        return f"cron:{expression}:{suffix}"
+    interval = int(profile.get("interval_sec") or 0)
+    return f"interval:{interval}s:{suffix}"
+
+
 def main() -> int:
     failures: list[str] = []
 
@@ -90,7 +101,7 @@ def main() -> int:
         if series:
             trend_ready_profiles += 1
         profile_summaries.append(
-            f"{profile_id}:{summary.get('done_windows', 0)}/{summary.get('total_windows', 0)}:{summary.get('latest_status', '-')}:trends={len(series)}"
+            f"{profile_id}:{schedule_summary(profile)}:{summary.get('done_windows', 0)}/{summary.get('total_windows', 0)}:{summary.get('latest_status', '-')}:trends={len(series)}"
         )
 
     print("Mini-Drop acceptance snapshot")

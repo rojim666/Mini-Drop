@@ -111,6 +111,22 @@ def signed_url_ok(url: str) -> bool:
     return f"localhost:{MINIO_PORT}" in url and "X-Amz-Signature=" in url
 
 
+def schedule_policy(profile: dict) -> str:
+    mode = str(profile.get("schedule_mode") or "interval")
+    if mode == "cron":
+        expression = str(profile.get("cron_expression") or "-")
+        return f"cron `{expression}`"
+    interval = profile.get("interval_sec") or 0
+    return f"interval `{interval}s`"
+
+
+def schedule_stagger(profile: dict) -> str:
+    stagger = int(profile.get("stagger_sec") or 0)
+    if stagger <= 0:
+        return "none"
+    return f"+{stagger}s"
+
+
 def top_hotspot(result: dict) -> str:
     hotspots = result.get("hotspots") or []
     if not hotspots:
@@ -216,6 +232,8 @@ def collect_evidence(include_real_preflight: bool = False, real_collectors: str 
                 profile_id,
                 str(profile.get("name") or "-"),
                 str(profile.get("target_agent_id") or "-"),
+                schedule_policy(profile),
+                schedule_stagger(profile),
                 "yes" if profile.get("enabled") else "no",
                 f"{summary.get('done_windows', 0)}/{summary.get('total_windows', 0)}",
                 str(summary.get("latest_status") or "-"),
@@ -261,7 +279,12 @@ def collect_evidence(include_real_preflight: bool = False, real_collectors: str 
 
     lines.extend(["", "## Continuous Profiling", ""])
     if profile_rows:
-        lines.extend(markdown_table(["Profile", "Name", "Agent", "Enabled", "Done/Total", "Latest", "Top trend"], profile_rows))
+        lines.extend(
+            markdown_table(
+                ["Profile", "Name", "Agent", "Schedule", "Stagger", "Enabled", "Done/Total", "Latest", "Top trend"],
+                profile_rows,
+            )
+        )
     else:
         lines.append("_No continuous profiles were available._")
 

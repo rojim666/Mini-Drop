@@ -108,13 +108,15 @@ Show:
 - `任务对比`: compare two completed tasks and point out TopN delta rows.
 - `任务对比`: show recurring hotspot aggregate rows across tasks and continuous profiles.
 - `计划任务`: show the minimal continuous profiling profile and its materialized
-  task windows, trend labels, and baseline drift.
+  task windows, interval/cron policy, stagger offset, trend labels, and baseline
+  drift.
 
 Say:
 
 > Continuous profiling is implemented as recurring windows that materialize into
 > normal tasks, so the same Agent, Analyzer, flamegraph, TopN, and attribution
-> path is reused. Trend labels and baseline drift make repeated hotspots visible
+> path is reused. Interval, cron, and stagger settings are visible from the same
+> plan table. Trend labels and baseline drift make repeated hotspots visible
 > without opening every single window.
 
 ## 6. Failure and Audit Path
@@ -169,7 +171,7 @@ Before finishing, show or mention:
 
 - `acceptance=OK` from `acceptance-snapshot`.
 - `continuous_profiles` and `continuous_profile_samples` lines from
-  `acceptance-snapshot`.
+  `acceptance-snapshot`, including each profile's schedule policy.
 - `artifacts/demo-evidence.md`.
 - Recent Git commits with meaningful messages.
 - Tests:
