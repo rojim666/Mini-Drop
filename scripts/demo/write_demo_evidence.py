@@ -121,6 +121,21 @@ def top_hotspot(result: dict) -> str:
     return f"{function} ({percent}%)"
 
 
+def trend_top_series(profile_id: str) -> str:
+    trend = request_json(f"/api/v1/continuous-profiles/{profile_id}/trends?limit=12")
+    series = trend.get("series") or []
+    if not series:
+        return "-"
+    top = series[0]
+    function = top.get("function", "-")
+    label = top.get("label", "-")
+    peak = top.get("peak", 0)
+    baseline = top.get("baseline") or {}
+    baseline_delta = baseline.get("delta_percent")
+    suffix = f", baseline {baseline_delta:+.1f}%" if isinstance(baseline_delta, (int, float)) else ""
+    return f"{function} / {label} / peak {peak}%{suffix}"
+
+
 def markdown_table(headers: list[str], rows: list[list[str]]) -> list[str]:
     lines = [
         "| " + " | ".join(headers) + " |",
@@ -188,6 +203,26 @@ def collect_evidence(include_real_preflight: bool = False, real_collectors: str 
     if comparable_count < 2:
         failures.append("Task comparison needs at least two DONE tasks with TopN hotspots")
 
+    profiles = request_json("/api/v1/continuous-profiles").get("profiles", [])
+    profile_rows: list[list[str]] = []
+    for profile in profiles[:6]:
+        profile_id = profile.get("id", "")
+        if not profile_id:
+            continue
+        windows_payload = request_json(f"/api/v1/continuous-profiles/{profile_id}/windows?limit=24")
+        summary = windows_payload.get("summary") or {}
+        profile_rows.append(
+            [
+                profile_id,
+                str(profile.get("name") or "-"),
+                str(profile.get("target_agent_id") or "-"),
+                "yes" if profile.get("enabled") else "no",
+                f"{summary.get('done_windows', 0)}/{summary.get('total_windows', 0)}",
+                str(summary.get("latest_status") or "-"),
+                trend_top_series(profile_id),
+            ]
+        )
+
     branch = run_git(["branch", "--show-current"]) or "(detached)"
     head = run_git(["rev-parse", "--short", "HEAD"])
     commits = run_git(["log", "--oneline", "-n", "8"]).splitlines()
@@ -223,6 +258,12 @@ def collect_evidence(include_real_preflight: bool = False, real_collectors: str 
         lines.extend(markdown_table(["Task", "Collector", "PID", "Status", "Signed URLs", "Top hotspot"], task_rows))
     else:
         lines.append("_No completed task samples were available._")
+
+    lines.extend(["", "## Continuous Profiling", ""])
+    if profile_rows:
+        lines.extend(markdown_table(["Profile", "Name", "Agent", "Enabled", "Done/Total", "Latest", "Top trend"], profile_rows))
+    else:
+        lines.append("_No continuous profiles were available._")
 
     if include_real_preflight:
         code, output = run_real_preflight(real_collectors)

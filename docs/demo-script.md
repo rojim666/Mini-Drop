@@ -106,14 +106,16 @@ Say:
 Show:
 
 - `任务对比`: compare two completed tasks and point out TopN delta rows.
+- `任务对比`: show recurring hotspot aggregate rows across tasks and continuous profiles.
 - `计划任务`: show the minimal continuous profiling profile and its materialized
-  task windows.
+  task windows, trend labels, and baseline drift.
 
 Say:
 
 > Continuous profiling is implemented as recurring windows that materialize into
 > normal tasks, so the same Agent, Analyzer, flamegraph, TopN, and attribution
-> path is reused.
+> path is reused. Trend labels and baseline drift make repeated hotspots visible
+> without opening every single window.
 
 ## 6. Failure and Audit Path
 
@@ -181,4 +183,3 @@ Closing sentence:
 > The mock product path is complete and repeatable. The real collector path is
 > coded and documented, with the remaining work narrowed to WSL2/Linux tool
 > installation and permission validation.
-
