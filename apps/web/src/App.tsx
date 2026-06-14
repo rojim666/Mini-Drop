@@ -59,13 +59,13 @@ const defaultContinuousInput: CreateContinuousProfileInput = {
 };
 
 const topLinks: Array<{ key: NavKey; label: string; icon: LucideIcon }> = [
-  { key: "home", label: "总览", icon: LayoutDashboard },
-  { key: "quick", label: "创建采样", icon: ActivitySquare },
-  { key: "machines", label: "探针", icon: RadioTower },
-  { key: "history", label: "任务", icon: History },
-  { key: "files", label: "产物", icon: FolderOpen },
-  { key: "schedule", label: "连续窗口", icon: Timer },
-  { key: "compare", label: "对比", icon: GitCompareArrows },
+  { key: "home", label: "首页", icon: LayoutDashboard },
+  { key: "quick", label: "快速接入", icon: ActivitySquare },
+  { key: "machines", label: "机器列表", icon: RadioTower },
+  { key: "history", label: "历史任务", icon: History },
+  { key: "files", label: "文件分析", icon: FolderOpen },
+  { key: "schedule", label: "计划任务", icon: Timer },
+  { key: "compare", label: "任务对比", icon: GitCompareArrows },
 ];
 
 function App() {
@@ -307,11 +307,11 @@ function App() {
                   <section className="hero-panel">
                     <div className="hero-copy">
                       <div className="eyebrow-row">
-                        <span className="eyebrow-chip">Mini-Drop Demo</span>
-                        <span className="eyebrow-chip muted">PerfOps Workbench</span>
+                        <span className="eyebrow-chip">Mini-Drop</span>
+                        <span className="eyebrow-chip muted">一站式性能优化平台</span>
                       </div>
-                      <h1>性能诊断工作台</h1>
-                      <p>把采样、分析、审计和归因收进一个工作台，先跑通 mock E2E，再逐步切换到真实 perf、eBPF 和 py-spy。</p>
+                      <h1>首页</h1>
+                      <p>面向 Linux 主机和容器场景的按需采样、火焰图分析、热点定位和智能归因演示平台。</p>
                       <div className="hero-actions">
                         <button className="primary-button" type="button" onClick={() => setCreateDialogOpen(true)}>
                           <ActivitySquare size={14} />
@@ -454,13 +454,12 @@ function TopNav({
           <ActivitySquare size={20} />
         </span>
         <span className="brand-text">
-          Mini-Drop <small>PerfOps</small>
+          Mini-Drop <small>性能优化平台</small>
         </span>
       </button>
 
       <nav className="top-links" aria-label="Mini-Drop primary navigation">
         {topLinks.map((item) => {
-          const Icon = item.icon;
           return (
             <button
               key={item.key}
@@ -468,7 +467,6 @@ function TopNav({
               className={activeNav === item.key ? "active" : ""}
               onClick={() => setActiveNav(item.key)}
             >
-              <Icon size={14} />
               {item.label}
             </button>
           );
@@ -477,13 +475,12 @@ function TopNav({
 
       <div className="top-actions">
         <button type="button" className="top-action secondary" onClick={() => setActiveNav("history")}>
-          <History size={14} />
-          状态审计
+          帮助
         </button>
         <button type="button" className="top-action secondary" onClick={() => setActiveNav("compare")}>
-          <GitCompareArrows size={14} />
-          Compare
+          用户组
         </button>
+        <span className="top-user">未登录</span>
         <button type="button" className="top-action primary" onClick={onCreateTask}>
           <ActivitySquare size={14} />
           新建采样
