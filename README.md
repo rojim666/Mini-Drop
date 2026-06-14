@@ -415,7 +415,10 @@ for scoped timeline review, and the Web page exposes those filters with a
 clickable window strip for drilling into the materialized task.
 `GET /api/v1/continuous-profiles/:id/trends` aggregates recent completed window
 TopN files into a compact hotspot trend view, so the plan page can show whether
-the same function is rising, falling, or staying stable across windows.
+the same function is rising, falling, staying stable, or sitting in a high-risk
+band across windows.
+The trend payload now also includes a deterministic label and reason so the Web
+page can flag sustained high-peak hotspots without a separate heuristic layer.
 
 For a Windows-safe demo, choose `collector_type=mock-perf`, enter the printed
 mock target PID, and keep the default `5 分钟` interval. The first window is

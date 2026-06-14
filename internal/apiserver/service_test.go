@@ -786,6 +786,12 @@ func TestContinuousProfileTrendsAggregateTopNWindows(t *testing.T) {
 	if got := first["delta"].(float64); got != 40 {
 		t.Fatalf("expected delta 40, got %v", got)
 	}
+	if got := first["label"].(string); got != "持续高位" {
+		t.Fatalf("expected high trend label, got %s", got)
+	}
+	if got := first["severity"].(string); got != "critical" {
+		t.Fatalf("expected critical severity, got %s", got)
+	}
 	points := first["points"].([]any)
 	if got := points[0].(map[string]any)["percent"].(float64); got != 70 {
 		t.Fatalf("expected newest percent 70, got %v", got)

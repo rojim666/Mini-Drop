@@ -1130,12 +1130,49 @@ button:disabled {
 
 .trend-table th:nth-child(1),
 .trend-table td:nth-child(1) {
-  width: 32%;
+  width: 28%;
 }
 
-.trend-table th:nth-child(5),
-.trend-table td:nth-child(5) {
+.trend-table th:nth-child(6),
+.trend-table td:nth-child(6) {
   width: 240px;
+}
+
+.trend-label {
+  min-width: 68px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--tc-border);
+  background: #ffffff;
+  color: var(--tc-text-soft);
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.trend-label.critical {
+  color: var(--tc-red);
+  border-color: #ffd4d0;
+  background: #fff5f4;
+}
+
+.trend-label.warning {
+  color: #b76b00;
+  border-color: #ffdca8;
+  background: #fff8eb;
+}
+
+.trend-label.success {
+  color: var(--tc-green);
+  border-color: #bdebdc;
+  background: #f0fbf6;
+}
+
+.trend-label.normal {
+  color: var(--tc-text-soft);
+  border-color: var(--tc-border);
+  background: #f7f9fc;
 }
 
 .trend-positive {

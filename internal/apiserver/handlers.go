@@ -114,6 +114,9 @@ type continuousTrendSeriesPayload struct {
 	Average  float64                       `json:"average"`
 	Peak     float64                       `json:"peak"`
 	Delta    float64                       `json:"delta"`
+	Label    string                        `json:"label"`
+	Severity string                        `json:"severity"`
+	Reason   string                        `json:"reason"`
 	Points   []continuousTrendPointPayload `json:"points"`
 }
 
@@ -1346,11 +1349,15 @@ func (s *Service) getContinuousProfileTrends(c *gin.Context) {
 		if len(points) > 1 {
 			delta = points[0].Percent - points[len(points)-1].Percent
 		}
+		label, severity, reason := classifyTrend(peak, delta)
 		seriesPayload = append(seriesPayload, continuousTrendSeriesPayload{
 			Function: function,
 			Average:  roundFloat(average, 2),
 			Peak:     roundFloat(peak, 2),
 			Delta:    roundFloat(delta, 2),
+			Label:    label,
+			Severity: severity,
+			Reason:   reason,
 			Points:   points,
 		})
 	}
@@ -1359,6 +1366,19 @@ func (s *Service) getContinuousProfileTrends(c *gin.Context) {
 		"windows": windowsPayload,
 		"series":  seriesPayload,
 	})
+}
+
+func classifyTrend(peak, delta float64) (string, string, string) {
+	switch {
+	case peak >= 50:
+		return "持续高位", "critical", "峰值占比达到 50% 以上，建议优先查看对应窗口火焰图"
+	case delta >= 15:
+		return "明显升高", "warning", "最新窗口相对最早窗口上升 15 个百分点以上"
+	case delta <= -15:
+		return "明显回落", "success", "最新窗口相对最早窗口下降 15 个百分点以上"
+	default:
+		return "平稳", "normal", "最近窗口间占比变化未超过 15 个百分点"
+	}
 }
 
 func (s *Service) toTaskResultPayload(c *gin.Context, task minidrop.Task, result minidrop.AnalysisResult) taskResultPayload {

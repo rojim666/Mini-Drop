@@ -1284,6 +1284,7 @@ function TrendPanel({
             <thead>
               <tr>
                 <th>函数</th>
+                <th>自动标注</th>
                 <th>平均占比</th>
                 <th>峰值</th>
                 <th>变化量</th>
@@ -1294,6 +1295,11 @@ function TrendPanel({
               {trend.series.map((series) => (
                 <tr key={series.function}>
                   <td>{series.function}</td>
+                  <td>
+                    <span className={`trend-label ${series.severity}`} title={series.reason}>
+                      {series.label}
+                    </span>
+                  </td>
                   <td>{series.average.toFixed(1)}%</td>
                   <td>{series.peak.toFixed(1)}%</td>
                   <td className={series.delta >= 0 ? "trend-positive" : "trend-negative"}>

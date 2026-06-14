@@ -169,6 +169,9 @@ export interface ContinuousTrendSeries {
   average: number;
   peak: number;
   delta: number;
+  label: string;
+  severity: "critical" | "warning" | "success" | "normal";
+  reason: string;
   points: ContinuousTrendPoint[];
 }
 
