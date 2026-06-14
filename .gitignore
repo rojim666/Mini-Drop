@@ -16,6 +16,9 @@ build/
 bin/
 tmp/
 coverage/
+tmp/toolchains/
+tmp/web-node-modules/
+tmp/web-runtime/
 
 # Node
 node_modules/
@@ -37,4 +40,3 @@ data/
 *.perf
 perf.data
 *.svg
-
