@@ -75,6 +75,7 @@ make acceptance-snapshot
 make demo-evidence
 make recording-checklist
 make submission-notes
+make final-preflight
 make demo-down
 ```
 
@@ -94,6 +95,9 @@ collector and the exact install or permission command to run next.
 page-by-page capture checklist for the final recording.
 `make submission-notes` writes `artifacts/submission-notes.md`, including the
 expected screenshot file names and a concise commit summary template.
+`make final-preflight` runs the lightweight recording gate, then writes
+`artifacts/final-preflight.md` with the combined check results, command
+outputs, and the final record/no-record decision.
 On Windows without `make`, use the PowerShell snapshot helper directly:
 
 ```powershell
@@ -101,6 +105,7 @@ On Windows without `make`, use the PowerShell snapshot helper directly:
 .\scripts\demo\write-demo-evidence.ps1
 .\scripts\demo\write-recording-checklist.ps1
 .\scripts\demo\write-submission-notes.ps1
+.\scripts\demo\final-preflight.ps1
 ```
 
 If compose is running on alternate ports, pass the same ports to the snapshot
@@ -111,6 +116,7 @@ and evidence helpers:
 .\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
 .\scripts\demo\write-recording-checklist.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
 .\scripts\demo\write-submission-notes.ps1 -ApiPort 18080 -WebPort 14173 -MinioConsolePort 19001
+.\scripts\demo\final-preflight.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001 -SeedTasks -IncludeRealPreflight
 ```
 
 On Linux / WSL2 without `make`, use the Bash helper:
@@ -121,6 +127,7 @@ bash ./scripts/demo/write-demo-evidence.sh
 bash ./scripts/demo/write-demo-evidence.sh --include-real-preflight
 bash ./scripts/demo/write-recording-checklist.sh
 bash ./scripts/demo/write-submission-notes.sh
+bash ./scripts/demo/final-preflight.sh
 ```
 
 If the stack is already running but lacks two completed mock tasks, seed and

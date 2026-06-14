@@ -75,6 +75,7 @@ be finished before lower items are started.
 - [x] Add compose-side readiness checks for Postgres and Web.
 - [x] Write one-click demo docs for compose and WSL2 flows.
 - [x] Add final demo script for recording and live review.
+- [x] Add final preflight report for the recording gate.
 
 ## P1: Observability
 

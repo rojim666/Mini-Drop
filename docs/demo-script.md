@@ -20,6 +20,7 @@ Generate acceptance and evidence output:
 .\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -IncludeRealPreflight
 .\scripts\demo\write-recording-checklist.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
 .\scripts\demo\write-submission-notes.ps1 -ApiPort 18080 -WebPort 14173 -MinioConsolePort 19001
+.\scripts\demo\final-preflight.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001 -IncludeRealPreflight
 ```
 
 Open these URLs before recording:
@@ -30,6 +31,7 @@ Open these URLs before recording:
 - Evidence file: `artifacts/demo-evidence.md`
 - Recording checklist: `artifacts/recording-checklist.md`
 - Submission notes: `artifacts/submission-notes.md`
+- Final preflight: `artifacts/final-preflight.md`
 
 Expected preflight state on the current machine:
 
@@ -178,6 +180,7 @@ Before finishing, show or mention:
   `acceptance-snapshot`, including each profile's schedule policy.
 - `artifacts/demo-evidence.md`.
 - `artifacts/submission-notes.md` screenshot manifest.
+- `artifacts/final-preflight.md` overall status.
 - Recent Git commits with meaningful messages.
 - Tests:
 

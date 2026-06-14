@@ -1,4 +1,4 @@
-.PHONY: help demo demo-up demo-down local local-down test build web-build docs-check smoke-local smoke-real smoke-demo smoke-demo-minio smoke-demo-fail smoke-demo-offline acceptance-snapshot demo-evidence recording-checklist submission-notes real-check perf-check ebpf-check pyspy-check
+.PHONY: help demo demo-up demo-down local local-down test build web-build docs-check smoke-local smoke-real smoke-demo smoke-demo-minio smoke-demo-fail smoke-demo-offline acceptance-snapshot demo-evidence recording-checklist submission-notes final-preflight real-check perf-check ebpf-check pyspy-check
 
 help:
 	@echo "Mini-Drop commands:"
@@ -13,6 +13,7 @@ help:
 	@echo "  make demo-evidence  Write artifacts/demo-evidence.md from live demo state"
 	@echo "  make recording-checklist  Write artifacts/recording-checklist.md"
 	@echo "  make submission-notes  Write artifacts/submission-notes.md"
+	@echo "  make final-preflight  Run the final demo preflight and write artifacts/final-preflight.md"
 	@echo "  make local       Start the local Linux/WSL demo stack"
 	@echo "  make local-down  Stop the local Linux/WSL demo stack"
 	@echo "  make test        Run Go tests"
@@ -58,6 +59,9 @@ recording-checklist:
 
 submission-notes:
 	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\write-submission-notes.ps1
+
+final-preflight:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\final-preflight.ps1
 
 perf-check:
 	@powershell -NoProfile -Command "if ($$env:MINIDROP_TARGET_PID) { python scripts\\demo\\check_perf_env.py --pid $$env:MINIDROP_TARGET_PID } else { python scripts\\demo\\check_perf_env.py }"

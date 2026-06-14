@@ -233,6 +233,7 @@ make smoke-real COLLECTOR_TYPE=py-spy
 3. 尽量跑通 `ebpf-syscall` 和 `py-spy` 的真实 smoke。
 4. 继续打磨 Web 控制台风格和演示路径。
 5. 按 `docs/demo-script.md` 录制最终演示，并补截图和提交说明。
+6. 录制前运行 `make final-preflight`，用 `artifacts/final-preflight.md` 汇总静态检查、自动测试、验收快照和交付材料生成状态。
 
 ## 两周交付排期
 
@@ -251,7 +252,7 @@ make smoke-real COLLECTOR_TYPE=py-spy
 | D11 | eBPF 采集器 | 代码完成，待 Linux 验证 |
 | D12 | Continuous Profiling 最小版 | 完成 |
 | D13 | 用户态采集器和智能归因 | 完成最小版 |
-| D14 | README、runbook、演示脚本、录屏准备 | 演示脚本、录制清单和提交说明模板已补，最终人工录屏待完成 |
+| D14 | README、runbook、演示脚本、录屏准备 | 演示脚本、录制清单、提交说明模板和 final preflight 已补，最终人工录屏待完成 |
 
 ## Commit 规则
 

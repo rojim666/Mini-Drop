@@ -102,6 +102,12 @@ commands:
 make submission-notes
 ```
 
+To run the full final preflight before recording:
+
+```bash
+make final-preflight
+```
+
 For the recommended 10 to 15 minute recording flow, use the final demo script:
 
 - [Final demo script](docs/demo-script.md)
@@ -112,6 +118,7 @@ On Windows PowerShell without `make`, run the helper directly:
 .\scripts\demo\acceptance-snapshot.ps1
 .\scripts\demo\write-recording-checklist.ps1
 .\scripts\demo\write-submission-notes.ps1
+.\scripts\demo\final-preflight.ps1
 ```
 
 For an alternate-port compose stack:
