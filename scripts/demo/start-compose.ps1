@@ -104,7 +104,8 @@ try {
     Write-Host "MinIO login:   minidrop / minidrop123"
     Write-Host ""
     Write-Host "Use PID 1 in the Web task form for the bundled compose target."
-    Write-Host "Snapshot:      .\scripts\demo\acceptance-snapshot.ps1"
+    Write-Host "Snapshot:      .\scripts\demo\acceptance-snapshot.ps1 -ApiPort $ApiPort -WebPort $WebPort -MinioPort $MinioPort"
+    Write-Host "Evidence:      .\scripts\demo\write-demo-evidence.ps1 -ApiPort $ApiPort -WebPort $WebPort -MinioPort $MinioPort"
     Write-Host "Stop command:  .\scripts\demo\stop-compose.ps1"
 } finally {
     Restore-ScopedEnvironment -Previous $previous

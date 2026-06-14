@@ -39,6 +39,11 @@ If default ports are occupied:
 .\scripts\demo\start-compose.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
 ```
 
+The script prints matching `acceptance-snapshot.ps1` and
+`write-demo-evidence.ps1` commands with the same ports. Copy those printed
+commands when the stack is not using the default `8080` / `4173` / `9000`
+ports.
+
 For a faster startup that only creates one smoke task:
 
 ```powershell
@@ -88,6 +93,14 @@ On Windows without `make`, use the PowerShell snapshot helper directly:
 ```powershell
 .\scripts\demo\acceptance-snapshot.ps1
 .\scripts\demo\write-demo-evidence.ps1
+```
+
+If compose is running on alternate ports, pass the same ports to the snapshot
+and evidence helpers:
+
+```powershell
+.\scripts\demo\acceptance-snapshot.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
+.\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
 ```
 
 On Linux / WSL2 without `make`, use the Bash helper:

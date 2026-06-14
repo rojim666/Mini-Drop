@@ -61,6 +61,10 @@ stack on alternate ports first:
 MINIDROP_API_PORT=18080 MINIDROP_WEB_PORT=14173 MINIDROP_MINIO_PORT=19000 MINIDROP_MINIO_CONSOLE_PORT=19001 make demo
 ```
 
+The PowerShell compose helper prints matching snapshot and evidence commands
+with the same ports. Use those printed commands when the stack is not on the
+default `8080` / `4173` / `9000` ports.
+
 For the compose-backed demo, use `PID 1` in the task form. The agent shares the
 PID namespace of the bundled `demo-target` container, so PID 1 is a stable mock
 workload for the end-to-end flow.
@@ -93,6 +97,13 @@ On Windows PowerShell without `make`, run the helper directly:
 
 ```powershell
 .\scripts\demo\acceptance-snapshot.ps1
+```
+
+For an alternate-port compose stack:
+
+```powershell
+.\scripts\demo\acceptance-snapshot.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
+.\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
 ```
 
 On Linux / WSL2 without `make`, use the Bash helper:
