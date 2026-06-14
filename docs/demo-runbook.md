@@ -63,21 +63,27 @@ make smoke-demo-minio
 make smoke-demo-fail
 make smoke-demo-offline
 make acceptance-snapshot
+make demo-evidence
 make demo-down
 ```
 
 `make demo` starts the stack and performs the MinIO signed URL smoke test.
 `make demo-up` only starts the stack.
+`make demo-evidence` writes `artifacts/demo-evidence.md` from the currently
+running API/Web/Git state so the final recording has a reproducible evidence
+summary.
 On Windows without `make`, use the PowerShell snapshot helper directly:
 
 ```powershell
 .\scripts\demo\acceptance-snapshot.ps1
+.\scripts\demo\write-demo-evidence.ps1
 ```
 
 On Linux / WSL2 without `make`, use the Bash helper:
 
 ```bash
 bash ./scripts/demo/acceptance-snapshot.sh
+bash ./scripts/demo/write-demo-evidence.sh
 ```
 
 If the stack is already running but lacks two completed mock tasks, seed and

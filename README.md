@@ -494,6 +494,8 @@ Verified in the current Windows workspace:
 - Docker Compose MinIO signed artifact URL path.
 - Docker Compose PID failure path.
 - Docker Compose acceptance snapshot with two completed TopN-backed tasks.
+- Markdown demo evidence generation with `make demo-evidence` or
+  `python scripts/demo/write_demo_evidence.py`.
 - Go API/Agent unit tests.
 - Python Analyzer unit tests.
 - Web production build.
