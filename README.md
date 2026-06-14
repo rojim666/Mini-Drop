@@ -85,6 +85,10 @@ To print a compact acceptance snapshot before recording or presenting the demo:
 make acceptance-snapshot
 ```
 
+For the recommended 10 to 15 minute recording flow, use the final demo script:
+
+- [Final demo script](docs/demo-script.md)
+
 On Windows PowerShell without `make`, run the helper directly:
 
 ```powershell
@@ -529,3 +533,4 @@ collector prerequisites before the real smoke can pass:
 - [Next implementation](docs/design/06-next-implementation.md)
 - [Attribution evaluation](docs/design/07-attribution-evaluation.md)
 - [Demo runbook](docs/demo-runbook.md)
+- [Final demo script](docs/demo-script.md)

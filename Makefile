@@ -95,4 +95,5 @@ docs-check:
 	@test -f docs/design/06-next-implementation.md
 	@test -f docs/design/07-attribution-evaluation.md
 	@test -f docs/demo-runbook.md
+	@test -f docs/demo-script.md
 	@echo "Required docs exist."

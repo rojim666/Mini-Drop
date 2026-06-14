@@ -5,6 +5,10 @@ This runbook keeps the two demo paths separate:
 - Windows / Docker Desktop: full mock E2E with PostgreSQL, MinIO signed URLs, API, Agent, and Web.
 - WSL2 Ubuntu / Linux: native Agent path for real collectors such as `perf`, `ebpf-syscall`, and `py-spy`.
 
+For the actual recording or live review order, use
+[`docs/demo-script.md`](demo-script.md). This runbook is the command reference;
+the demo script is the narrated walkthrough.
+
 ## 1. Windows Compose Demo
 
 Use this path for the default review demo. It does not require Linux kernel

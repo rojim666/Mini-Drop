@@ -74,6 +74,7 @@ be finished before lower items are started.
 - [x] Add MinIO object storage and signed artifact URLs.
 - [x] Add compose-side readiness checks for Postgres and Web.
 - [x] Write one-click demo docs for compose and WSL2 flows.
+- [x] Add final demo script for recording and live review.
 
 ## P1: Observability
 
