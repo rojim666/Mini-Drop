@@ -35,6 +35,7 @@ PYTHON_SYNTAX_FILES = [
     "scripts/demo/write_submission_notes.py",
     "scripts/demo/run_final_preflight.py",
     "scripts/demo/check_coverage.py",
+    "scripts/demo/demo_diagnostics.py",
 ]
 
 

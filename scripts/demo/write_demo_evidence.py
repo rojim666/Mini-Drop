@@ -8,6 +8,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from demo_diagnostics import missing_endpoint_hint, minio_signed_url_failure_hints, signed_url_ok
+
 
 ROOT = Path(__file__).resolve().parents[2]
 API_PORT = os.environ.get("MINIDROP_API_PORT", "8080")
@@ -21,6 +23,16 @@ def request_json(path: str) -> dict:
     req = urllib.request.Request(f"{API_BASE}{path}", method="GET")
     with urllib.request.urlopen(req, timeout=10) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def request_optional_json(path: str, failures: list[str]) -> dict | None:
+    try:
+        return request_json(path)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            failures.append(missing_endpoint_hint(path, API_BASE))
+            return None
+        raise
 
 
 def check_url(url: str) -> tuple[bool, str]:
@@ -107,10 +119,6 @@ def shell_quote(value: str) -> str:
     return "'" + value.replace("'", "'\"'\"'") + "'"
 
 
-def signed_url_ok(url: str) -> bool:
-    return f"localhost:{MINIO_PORT}" in url and "X-Amz-Signature=" in url
-
-
 def schedule_policy(profile: dict) -> str:
     mode = str(profile.get("schedule_mode") or "interval")
     if mode == "cron":
@@ -137,8 +145,8 @@ def top_hotspot(result: dict) -> str:
     return f"{function} ({percent}%)"
 
 
-def trend_top_series(profile_id: str) -> str:
-    trend = request_json(f"/api/v1/continuous-profiles/{profile_id}/trends?limit=12")
+def trend_top_series(profile_id: str, failures: list[str]) -> str:
+    trend = request_optional_json(f"/api/v1/continuous-profiles/{profile_id}/trends?limit=12", failures) or {}
     series = trend.get("series") or []
     if not series:
         return "-"
@@ -189,6 +197,7 @@ def collect_evidence(include_real_preflight: bool = False, real_collectors: str 
     task_rows: list[list[str]] = []
     signed_url_count = 0
     comparable_count = 0
+    result_urls: list[str] = []
     for task in done_tasks[:8]:
         task_id = task.get("id", "")
         if not task_id:
@@ -200,7 +209,8 @@ def collect_evidence(include_real_preflight: bool = False, real_collectors: str 
             comparable_count += 1
         flamegraph_url = result.get("flamegraph_url") or ""
         topn_url = result.get("topn_url") or ""
-        has_signed_urls = signed_url_ok(flamegraph_url) and signed_url_ok(topn_url)
+        result_urls.extend(url for url in [flamegraph_url, topn_url] if url)
+        has_signed_urls = signed_url_ok(flamegraph_url, MINIO_PORT) and signed_url_ok(topn_url, MINIO_PORT)
         if has_signed_urls:
             signed_url_count += 1
         task_rows.append(
@@ -216,16 +226,20 @@ def collect_evidence(include_real_preflight: bool = False, real_collectors: str 
 
     if signed_url_count == 0:
         failures.append(f"No DONE task has MinIO signed flamegraph/topn URLs on localhost:{MINIO_PORT}")
+        failures.extend(minio_signed_url_failure_hints(agents, result_urls, MINIO_PORT, API_BASE, WEB_PORT))
     if comparable_count < 2:
         failures.append("Task comparison needs at least two DONE tasks with TopN hotspots")
 
-    profiles = request_json("/api/v1/continuous-profiles").get("profiles", [])
+    profiles_payload = request_optional_json("/api/v1/continuous-profiles", failures) or {}
+    profiles = profiles_payload.get("profiles", [])
     profile_rows: list[list[str]] = []
     for profile in profiles[:6]:
         profile_id = profile.get("id", "")
         if not profile_id:
             continue
-        windows_payload = request_json(f"/api/v1/continuous-profiles/{profile_id}/windows?limit=24")
+        windows_payload = request_optional_json(
+            f"/api/v1/continuous-profiles/{profile_id}/windows?limit=24", failures
+        ) or {}
         summary = windows_payload.get("summary") or {}
         profile_rows.append(
             [
@@ -237,7 +251,7 @@ def collect_evidence(include_real_preflight: bool = False, real_collectors: str 
                 "yes" if profile.get("enabled") else "no",
                 f"{summary.get('done_windows', 0)}/{summary.get('total_windows', 0)}",
                 str(summary.get("latest_status") or "-"),
-                trend_top_series(profile_id),
+                trend_top_series(profile_id, failures),
             ]
         )
 
