@@ -75,6 +75,24 @@ def main() -> int:
     if comparable_count < 2:
         failures.append("Task comparison needs at least two DONE tasks with TopN hotspots")
 
+    profiles = request_json("/api/v1/continuous-profiles").get("profiles", [])
+    enabled_profiles = [profile for profile in profiles if profile.get("enabled")]
+    trend_ready_profiles = 0
+    profile_summaries: list[str] = []
+    for profile in profiles[:5]:
+        profile_id = profile.get("id")
+        if not profile_id:
+            continue
+        windows_payload = request_json(f"/api/v1/continuous-profiles/{profile_id}/windows?limit=24")
+        summary = windows_payload.get("summary") or {}
+        trend = request_json(f"/api/v1/continuous-profiles/{profile_id}/trends?limit=12")
+        series = trend.get("series") or []
+        if series:
+            trend_ready_profiles += 1
+        profile_summaries.append(
+            f"{profile_id}:{summary.get('done_windows', 0)}/{summary.get('total_windows', 0)}:{summary.get('latest_status', '-')}:trends={len(series)}"
+        )
+
     print("Mini-Drop acceptance snapshot")
     print(f"api={API_BASE} health={health.get('status')}")
     print(f"web=http://localhost:{WEB_PORT} reachable={web_ok}")
@@ -82,6 +100,8 @@ def main() -> int:
     print(f"tasks_done={len(done_tasks)} tasks_failed={len(failed_tasks)} sampled_done={','.join(done_task_ids)}")
     print(f"minio_signed_results={signed_url_count}")
     print(f"compare_ready_tasks={comparable_count}")
+    print(f"continuous_profiles={len(profiles)} enabled={len(enabled_profiles)} trend_ready={trend_ready_profiles}")
+    print(f"continuous_profile_samples={','.join(profile_summaries) if profile_summaries else '-'}")
 
     if failures:
         print("acceptance=FAILED")

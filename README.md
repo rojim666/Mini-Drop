@@ -124,8 +124,9 @@ bash ./scripts/demo/acceptance-snapshot.sh --seed-tasks
 ```
 
 The snapshot checks API health, Web reachability, online Agents, completed
-tasks, MinIO signed result URLs, and whether the Web task-comparison page has at
-least two completed TopN-backed tasks to compare.
+tasks, MinIO signed result URLs, whether the Web task-comparison page has at
+least two completed TopN-backed tasks to compare, and continuous profiling
+window/trend readiness.
 
 If `8080` or `4173` is already used by a local run, start the compose stack on
 alternate host ports:

@@ -168,6 +168,8 @@ make smoke-real COLLECTOR_TYPE=py-spy
 Before finishing, show or mention:
 
 - `acceptance=OK` from `acceptance-snapshot`.
+- `continuous_profiles` and `continuous_profile_samples` lines from
+  `acceptance-snapshot`.
 - `artifacts/demo-evidence.md`.
 - Recent Git commits with meaningful messages.
 - Tests:
