@@ -31,6 +31,16 @@ services:
       - "${MINIDROP_MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - mini_drop_minio:/data
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://127.0.0.1:9000/minio/health/ready
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
 
   demo-target:
     image: python:3.12-slim
@@ -73,7 +83,7 @@ services:
       postgres:
         condition: service_healthy
       minio:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - mini_drop_artifacts:/app/artifacts
     healthcheck:
