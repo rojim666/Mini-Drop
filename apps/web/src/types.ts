@@ -110,6 +110,9 @@ export interface ContinuousProfile {
   collector_type: string;
   window_duration_sec: number;
   interval_sec: number;
+  schedule_mode: "interval" | "cron";
+  cron_expression: string;
+  stagger_sec: number;
   enabled: boolean;
   last_window_start_at?: string;
   last_scheduled_at?: string;
@@ -198,4 +201,7 @@ export interface CreateContinuousProfileInput {
   sample_rate_hz: number;
   collector_type: string;
   interval_sec: number;
+  schedule_mode: "interval" | "cron";
+  cron_expression?: string;
+  stagger_sec: number;
 }

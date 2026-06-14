@@ -62,12 +62,15 @@ const defaultTaskInput: CreateTaskInput = {
 };
 
 const defaultContinuousInput: CreateContinuousProfileInput = {
-  name: "默认 5 分钟窗口",
+  name: "默认连续剖析计划",
   target_pid: 1,
   sample_duration_sec: 15,
   sample_rate_hz: 49,
   collector_type: "mock-perf",
   interval_sec: 300,
+  schedule_mode: "interval",
+  cron_expression: "*/5 * * * *",
+  stagger_sec: 0,
 };
 
 const topLinks: Array<{ key: NavKey; label: string; icon: LucideIcon }> = [
@@ -280,6 +283,8 @@ function App() {
       const payload = {
         ...continuousInput,
         target_agent_id: continuousInput.target_agent_id || undefined,
+        cron_expression: continuousInput.schedule_mode === "cron" ? continuousInput.cron_expression || "*/5 * * * *" : undefined,
+        interval_sec: continuousInput.schedule_mode === "cron" ? continuousInput.interval_sec || 300 : continuousInput.interval_sec,
       };
       const response = await createContinuousProfile(payload);
       setSelectedProfileId(response.profile.id);
@@ -1087,13 +1092,14 @@ function SchedulePage({
   onOpenTask: (taskId: string) => void;
 }) {
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? null;
+  const scheduleMode = continuousInput.schedule_mode ?? "interval";
 
   return (
     <div className="page-stack">
       <section className="page-title-row">
         <div>
           <h1>计划任务</h1>
-          <p>固定 5 分钟窗口持续采样，窗口结果会落成普通任务，继续复用同一套火焰图和热点详情。</p>
+          <p>按固定间隔或 cron 表达式持续采样，窗口结果会落成普通任务，继续复用同一套火焰图和热点详情。</p>
         </div>
       </section>
 
@@ -1106,7 +1112,8 @@ function SchedulePage({
                 <th>名称</th>
                 <th>目标 PID</th>
                 <th>采集器</th>
-                <th>间隔</th>
+                <th>调度策略</th>
+                <th>错峰</th>
                 <th>状态</th>
                 <th>操作</th>
               </tr>
@@ -1128,7 +1135,8 @@ function SchedulePage({
                     <td>{profile.name}</td>
                     <td>{profile.target_pid}</td>
                     <td>{profile.collector_type}</td>
-                    <td>{profile.interval_sec}s</td>
+                    <td>{formatSchedulePolicy(profile)}</td>
+                    <td>{formatStagger(profile.stagger_sec)}</td>
                     <td>{profile.enabled ? "运行中" : "已停用"}</td>
                     <td>
                       <button
@@ -1159,17 +1167,65 @@ function SchedulePage({
                 onChange={(event) => setContinuousInput((current) => ({ ...current, name: event.target.value }))}
               />
             </label>
+            <div className="schedule-mode-row">
+              <span>调度方式</span>
+              <div className="segmented-control" role="group" aria-label="调度方式">
+                <button
+                  type="button"
+                  className={scheduleMode === "interval" ? "active" : ""}
+                  onClick={() => setContinuousInput((current) => ({ ...current, schedule_mode: "interval" }))}
+                >
+                  固定间隔
+                </button>
+                <button
+                  type="button"
+                  className={scheduleMode === "cron" ? "active" : ""}
+                  onClick={() => setContinuousInput((current) => ({ ...current, schedule_mode: "cron" }))}
+                >
+                  Cron
+                </button>
+              </div>
+            </div>
+            {scheduleMode === "interval" ? (
+              <label>
+                <span>窗口间隔</span>
+                <select
+                  value={continuousInput.interval_sec}
+                  onChange={(event) => setContinuousInput((current) => ({ ...current, interval_sec: Number(event.target.value) }))}
+                >
+                  <option value={300}>5 分钟</option>
+                  <option value={600}>10 分钟</option>
+                  <option value={1800}>30 分钟</option>
+                </select>
+              </label>
+            ) : (
+              <label>
+                <span>Cron 表达式</span>
+                <input
+                  type="text"
+                  value={continuousInput.cron_expression ?? ""}
+                  onChange={(event) => setContinuousInput((current) => ({ ...current, cron_expression: event.target.value }))}
+                  placeholder="*/5 * * * *"
+                />
+              </label>
+            )}
             <label>
-              <span>窗口间隔</span>
+              <span>错峰启动</span>
               <select
-                value={continuousInput.interval_sec}
-                onChange={(event) => setContinuousInput((current) => ({ ...current, interval_sec: Number(event.target.value) }))}
+                value={continuousInput.stagger_sec}
+                onChange={(event) => setContinuousInput((current) => ({ ...current, stagger_sec: Number(event.target.value) }))}
               >
-                <option value={300}>5 分钟</option>
-                <option value={600}>10 分钟</option>
-                <option value={1800}>30 分钟</option>
+                <option value={0}>不延迟</option>
+                <option value={15}>15 秒</option>
+                <option value={30}>30 秒</option>
+                <option value={60}>60 秒</option>
+                <option value={120}>120 秒</option>
               </select>
             </label>
+            <div className="schedule-hint-strip">
+              <span>{scheduleMode === "cron" ? "cron" : "interval"}</span>
+              <strong>{previewSchedule(continuousInput)}</strong>
+            </div>
           </div>
           <TaskForm
             agents={agents}
@@ -2125,6 +2181,35 @@ function formatPercent(value: number) {
     return "0%";
   }
   return `${Math.round(value * 100)}%`;
+}
+
+function formatSchedulePolicy(profile: ContinuousProfile) {
+  if (profile.schedule_mode === "cron") {
+    return profile.cron_expression || "cron 未配置";
+  }
+  return formatSeconds(profile.interval_sec);
+}
+
+function formatStagger(seconds: number) {
+  if (!seconds) {
+    return "无";
+  }
+  return `+${formatSeconds(seconds)}`;
+}
+
+function previewSchedule(input: CreateContinuousProfileInput) {
+  const stagger = input.stagger_sec ? `，错峰 ${formatSeconds(input.stagger_sec)}` : "";
+  if (input.schedule_mode === "cron") {
+    return `${input.cron_expression || "*/5 * * * *"}${stagger}`;
+  }
+  return `每 ${formatSeconds(input.interval_sec)} 生成窗口${stagger}`;
+}
+
+function formatSeconds(seconds: number) {
+  if (seconds >= 60 && seconds % 60 === 0) {
+    return `${seconds / 60} 分钟`;
+  }
+  return `${seconds} 秒`;
 }
 
 function evidenceKindText(value: string) {

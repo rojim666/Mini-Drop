@@ -194,15 +194,13 @@ make smoke-real COLLECTOR_TYPE=py-spy
 - API 为趋势结果接入 seeded baseline 对比，Web 直接展示基线偏差。
 - API 和 Web 支持 continuous profile 启用/停用，并写入审计日志，停用后不再调度新窗口。
 - API 对未指定目标机器的任务和 continuous profile 使用最少活跃任务优先的自动 Agent 调度策略。
+- API 和 Web 支持 interval / cron 两种 continuous profile 调度方式，并支持秒级错峰窗口，Agent 只领取已到 `window_start_at` 的窗口任务。
 
-当前状态：已完成最小版，并补齐窗口聚合摘要、筛选、可点击时间轴、跨窗口热点趋势、细粒度自动标注、baseline 对比和 profile 生命周期控制。
+当前状态：已完成最小版，并补齐窗口聚合摘要、筛选、可点击时间轴、跨窗口热点趋势、细粒度自动标注、baseline 对比、profile 生命周期控制、cron 表达式和错峰窗口策略。
 任务对比页已补充最小跨任务热点聚合视图，用于查看已完成任务中的重复热点、覆盖任务数、平均占比和峰值。
 任务对比页已补充最小跨 profile 聚合视图，用于区分跨连续计划反复出现的热点和单计划异常。
 调度策略已补齐最小版：自动目标选择会优先分配给活跃任务数更少的在线 Agent。
-
-下一步增强：
-
-- 增加 cron 表达式和更细的错峰窗口策略。
+调度表达式当前由内置轻量解析器支持常见五字段 cron、`@every` 和错峰秒数；后续如需完整生产级 cron 方言，可替换为专用 cron 库并保留现有 API 字段。
 
 ## 阶段 9：智能归因
 

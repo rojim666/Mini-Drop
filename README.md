@@ -403,7 +403,9 @@ adjusting `kernel.yama.ptrace_scope` for the demo session.
 ### Continuous profiling windows
 
 The `计划任务` page now creates a minimal continuous profiling profile. Each
-profile uses fixed 5-minute windows (`300s`) and materializes each due window as
+profile can use the default fixed 5-minute interval (`300s`) or a five-field
+cron expression such as `*/5 * * * *`, plus an optional stagger offset to avoid
+multiple profiles starting at the same second. Every due window materializes as
 a normal task, so the existing Agent, Analyzer, flamegraph, TopN, and attribution
 views are reused.
 
@@ -429,9 +431,11 @@ persists an audit log for each lifecycle change while keeping existing windows
 available for review.
 
 For a Windows-safe demo, choose `collector_type=mock-perf`, enter the printed
-mock target PID, and keep the default `5 分钟` interval. The first window is
-created immediately so the demo does not need to wait five minutes; later
-windows are scheduled by the API background scanner and the Agent polling loop.
+mock target PID, and keep the default `5 分钟` interval. Advanced demos can switch
+the plan form to `Cron`, use a value like `*/5 * * * *`, and set a 15-120 second
+stagger. The first interval window is created immediately so the demo does not
+need to wait five minutes; later windows are scheduled by the API background
+scanner and only become claimable when their window start time has arrived.
 When the target agent is left blank, the API assigns the task or continuous
 profile to the online Agent with the fewest active tasks, which keeps the demo
 usable when multiple Agents are running.

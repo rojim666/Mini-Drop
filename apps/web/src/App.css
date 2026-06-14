@@ -897,6 +897,7 @@ button:disabled {
 
 .drop-form label,
 .schedule-form-head label,
+.schedule-mode-row,
 .window-filter-bar label,
 .compare-selector {
   display: grid;
@@ -907,6 +908,7 @@ button:disabled {
 
 .drop-form label > span,
 .schedule-form-head span,
+.schedule-mode-row > span,
 .window-filter-bar span,
 .compare-selector span {
   color: var(--tc-text-soft);
@@ -961,6 +963,70 @@ button:disabled {
   margin-bottom: 18px;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--tc-border-soft);
+}
+
+.segmented-control {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--tc-border);
+  background: #ffffff;
+}
+
+.segmented-control button {
+  min-width: 0;
+  border: 0;
+  border-right: 1px solid var(--tc-border);
+  background: #ffffff;
+  color: var(--tc-text);
+  padding: 0 12px;
+}
+
+.segmented-control button:last-child {
+  border-right: 0;
+}
+
+.segmented-control button:hover {
+  color: var(--tc-blue);
+}
+
+.segmented-control button.active {
+  color: var(--tc-blue);
+  background: var(--tc-blue-light);
+  box-shadow: inset 0 0 0 1px var(--tc-blue);
+}
+
+.schedule-hint-strip {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--tc-border-soft);
+  background: #f8fbff;
+  padding: 7px 10px;
+  color: var(--tc-text);
+}
+
+.schedule-hint-strip span {
+  min-width: 58px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #bfd8ff;
+  background: #ffffff;
+  color: var(--tc-blue);
+  font-size: 12px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.schedule-hint-strip strong {
+  min-width: 0;
+  color: var(--tc-text-strong);
+  font-size: 13px;
+  font-weight: 500;
+  word-break: break-word;
 }
 
 .window-filter-bar {
@@ -1807,6 +1873,7 @@ button:disabled {
   .drop-form label,
   .form-line label,
   .schedule-form-head label,
+  .schedule-mode-row,
   .window-filter-bar label,
   .compare-selector {
     grid-template-columns: 1fr;
@@ -1814,6 +1881,7 @@ button:disabled {
 
   .drop-form label > span,
   .schedule-form-head span,
+  .schedule-mode-row > span,
   .window-filter-bar span,
   .compare-selector span {
     text-align: left;
