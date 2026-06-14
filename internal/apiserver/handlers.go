@@ -33,6 +33,45 @@ type taskMutationRequest struct {
 	Summary         string `json:"summary"`
 }
 
+type continuousProfileRequest struct {
+	Name              string `json:"name"`
+	TargetPID         int    `json:"target_pid"`
+	TargetAgentID     string `json:"target_agent_id"`
+	SampleDurationSec int    `json:"sample_duration_sec"`
+	SampleRateHz      int    `json:"sample_rate_hz"`
+	CollectorType     string `json:"collector_type"`
+	IntervalSec       int    `json:"interval_sec"`
+}
+
+type continuousProfilePayload struct {
+	ID                string     `json:"id"`
+	Name              string     `json:"name"`
+	TargetPID         int        `json:"target_pid"`
+	TargetAgentID     string     `json:"target_agent_id"`
+	SampleDurationSec int        `json:"sample_duration_sec"`
+	SampleRateHz      int        `json:"sample_rate_hz"`
+	CollectorType     string     `json:"collector_type"`
+	WindowDurationSec int        `json:"window_duration_sec"`
+	IntervalSec       int        `json:"interval_sec"`
+	Enabled           bool       `json:"enabled"`
+	LastWindowStartAt *time.Time `json:"last_window_start_at,omitempty"`
+	LastScheduledAt   *time.Time `json:"last_scheduled_at,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+}
+
+type continuousWindowPayload struct {
+	ID            string    `json:"id"`
+	ProfileID     string    `json:"profile_id"`
+	TaskID        string    `json:"task_id"`
+	WindowStartAt time.Time `json:"window_start_at"`
+	WindowEndAt   time.Time `json:"window_end_at"`
+	Status        string    `json:"status"`
+	StatusReason  string    `json:"status_reason"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
 type apiError struct {
 	Error string `json:"error"`
 }
@@ -41,6 +80,39 @@ type hotspotPayload struct {
 	Function string  `json:"function"`
 	Samples  int     `json:"samples"`
 	Percent  float64 `json:"percent"`
+}
+
+type attributionEvidencePayload struct {
+	Kind     string  `json:"kind"`
+	Detail   string  `json:"detail"`
+	Function string  `json:"function,omitempty"`
+	Samples  int     `json:"samples,omitempty"`
+	Percent  float64 `json:"percent,omitempty"`
+}
+
+type attributionSourcePayload struct {
+	TaskID            string `json:"task_id"`
+	CollectorType     string `json:"collector_type"`
+	SampleDurationSec int    `json:"sample_duration_sec"`
+	SampleRateHz      int    `json:"sample_rate_hz"`
+	TopNPath          string `json:"topn_path"`
+}
+
+type attributionPayload struct {
+	Conclusion      string                       `json:"conclusion"`
+	Confidence      float64                      `json:"confidence"`
+	Evidence        []attributionEvidencePayload `json:"evidence"`
+	Recommendations []string                     `json:"recommendations"`
+	Source          attributionSourcePayload     `json:"source"`
+	ToolTrace       []attributionToolCallPayload `json:"tool_trace,omitempty"`
+	Prompt          string                       `json:"prompt,omitempty"`
+	PersistedAt     *time.Time                   `json:"persisted_at,omitempty"`
+}
+
+type attributionToolCallPayload struct {
+	Name   string `json:"name"`
+	Input  string `json:"input"`
+	Output string `json:"output"`
 }
 
 type agentPayload struct {
@@ -61,29 +133,32 @@ type taskEventPayload struct {
 }
 
 type taskResultPayload struct {
-	FlamegraphURL string           `json:"flamegraph_url"`
-	TopNURL       string           `json:"topn_url"`
-	Summary       string           `json:"summary"`
-	Hotspots      []hotspotPayload `json:"hotspots"`
+	FlamegraphURL string              `json:"flamegraph_url"`
+	TopNURL       string              `json:"topn_url"`
+	Summary       string              `json:"summary"`
+	Hotspots      []hotspotPayload    `json:"hotspots"`
+	Attribution   *attributionPayload `json:"attribution,omitempty"`
 }
 
 type taskPayload struct {
-	ID                string             `json:"id"`
-	TargetPID         int                `json:"target_pid"`
-	TargetAgentID     string             `json:"target_agent_id"`
-	SampleDurationSec int                `json:"sample_duration_sec"`
-	SampleRateHz      int                `json:"sample_rate_hz"`
-	CollectorType     string             `json:"collector_type"`
-	Status            string             `json:"status"`
-	StatusReason      string             `json:"status_reason"`
-	CreatedAt         time.Time          `json:"created_at"`
-	UpdatedAt         time.Time          `json:"updated_at"`
-	StartedAt         *time.Time         `json:"started_at,omitempty"`
-	FinishedAt        *time.Time         `json:"finished_at,omitempty"`
-	RawArtifactURL    string             `json:"raw_artifact_url,omitempty"`
-	AnalysisURL       string             `json:"analysis_artifact_url,omitempty"`
-	Events            []taskEventPayload `json:"events,omitempty"`
-	Result            *taskResultPayload `json:"result,omitempty"`
+	ID                  string             `json:"id"`
+	TargetPID           int                `json:"target_pid"`
+	TargetAgentID       string             `json:"target_agent_id"`
+	SampleDurationSec   int                `json:"sample_duration_sec"`
+	SampleRateHz        int                `json:"sample_rate_hz"`
+	CollectorType       string             `json:"collector_type"`
+	ContinuousProfileID string             `json:"continuous_profile_id,omitempty"`
+	ContinuousWindowID  string             `json:"continuous_window_id,omitempty"`
+	Status              string             `json:"status"`
+	StatusReason        string             `json:"status_reason"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
+	StartedAt           *time.Time         `json:"started_at,omitempty"`
+	FinishedAt          *time.Time         `json:"finished_at,omitempty"`
+	RawArtifactURL      string             `json:"raw_artifact_url,omitempty"`
+	AnalysisURL         string             `json:"analysis_artifact_url,omitempty"`
+	Events              []taskEventPayload `json:"events,omitempty"`
+	Result              *taskResultPayload `json:"result,omitempty"`
 }
 
 type auditPayload struct {
@@ -112,6 +187,10 @@ func (s *Service) newRouter() *gin.Engine {
 		v1.POST("/tasks", s.createTask)
 		v1.GET("/tasks/:id", s.getTask)
 		v1.GET("/tasks/:id/results", s.getTaskResults)
+		v1.GET("/continuous-profiles", s.listContinuousProfiles)
+		v1.POST("/continuous-profiles", s.createContinuousProfile)
+		v1.GET("/continuous-profiles/:id", s.getContinuousProfile)
+		v1.GET("/continuous-profiles/:id/windows", s.listContinuousProfileWindows)
 		v1.GET("/audit-logs", s.listAuditLogs)
 
 		internal := v1.Group("/internal")
@@ -119,6 +198,7 @@ func (s *Service) newRouter() *gin.Engine {
 		internal.POST("/tasks/:id/uploading", s.markTaskUploading)
 		internal.POST("/tasks/:id/complete", s.completeTask)
 		internal.POST("/tasks/:id/fail", s.failTask)
+		internal.GET("/continuous-profiles/claim", s.claimContinuousProfileWindow)
 	}
 
 	return router
@@ -384,7 +464,130 @@ func (s *Service) getTaskResults(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"task_id": task.ID, "result": s.toTaskResultPayload(c, *result)})
+	c.JSON(http.StatusOK, gin.H{"task_id": task.ID, "result": s.toTaskResultPayload(c, task, *result)})
+}
+
+func (s *Service) listContinuousProfiles(c *gin.Context) {
+	var profiles []minidrop.ContinuousProfile
+	if err := s.db.Order("created_at desc").Find(&profiles).Error; err != nil {
+		s.writeError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	payload := make([]continuousProfilePayload, 0, len(profiles))
+	for _, profile := range profiles {
+		payload = append(payload, s.toContinuousProfilePayload(profile))
+	}
+
+	c.JSON(http.StatusOK, gin.H{"profiles": payload})
+}
+
+func (s *Service) createContinuousProfile(c *gin.Context) {
+	var req continuousProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.writeError(c, http.StatusBadRequest, err)
+		return
+	}
+
+	input := minidrop.CreateContinuousProfileInput{
+		Name:              req.Name,
+		TargetPID:         req.TargetPID,
+		TargetAgentID:     req.TargetAgentID,
+		SampleDurationSec: req.SampleDurationSec,
+		SampleRateHz:      req.SampleRateHz,
+		CollectorType:     req.CollectorType,
+		IntervalSec:       req.IntervalSec,
+	}
+	input.Normalize()
+	if err := minidrop.ValidateCreateContinuousProfileInput(input); err != nil {
+		s.writeError(c, http.StatusBadRequest, err)
+		return
+	}
+
+	now := time.Now().UTC()
+	profile := minidrop.ContinuousProfile{
+		ID:                minidrop.GenerateID("cprof"),
+		Name:              nonEmptyReason(input.Name, fmt.Sprintf("PID %d continuous profile", input.TargetPID)),
+		TargetPID:         input.TargetPID,
+		TargetAgentID:     input.TargetAgentID,
+		SampleDurationSec: input.SampleDurationSec,
+		SampleRateHz:      input.SampleRateHz,
+		CollectorType:     input.CollectorType,
+		WindowDurationSec: minidrop.ContinuousWindowDurationSec,
+		IntervalSec:       input.IntervalSec,
+		Enabled:           true,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if profile.TargetAgentID == "" {
+			var agent minidrop.Agent
+			if err := tx.Where("status = ?", minidrop.AgentStatusOnline).Order("last_heartbeat_at desc").First(&agent).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return errors.New("no online agent available")
+				}
+				return err
+			}
+			profile.TargetAgentID = agent.ID
+		} else {
+			var agent minidrop.Agent
+			if err := tx.First(&agent, "id = ?", profile.TargetAgentID).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return errors.New("target agent not found")
+				}
+				return err
+			}
+			if agent.Status != minidrop.AgentStatusOnline {
+				return errors.New("target agent is offline")
+			}
+		}
+
+		if err := tx.Create(&profile).Error; err != nil {
+			return err
+		}
+		_, _, err := s.materializeContinuousWindow(tx, &profile, now, "initial continuous profiling window")
+		return err
+	})
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "no online agent available" || err.Error() == "target agent not found" || err.Error() == "target agent is offline" {
+			status = http.StatusConflict
+		}
+		s.writeError(c, status, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"profile": s.toContinuousProfilePayload(profile)})
+}
+
+func (s *Service) getContinuousProfile(c *gin.Context) {
+	var profile minidrop.ContinuousProfile
+	if err := s.db.First(&profile, "id = ?", c.Param("id")).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			s.writeError(c, http.StatusNotFound, err)
+			return
+		}
+		s.writeError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"profile": s.toContinuousProfilePayload(profile)})
+}
+
+func (s *Service) listContinuousProfileWindows(c *gin.Context) {
+	var windows []minidrop.ContinuousProfileWindow
+	if err := s.db.Where("profile_id = ?", c.Param("id")).Order("window_start_at desc").Limit(24).Find(&windows).Error; err != nil {
+		s.writeError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	payload := make([]continuousWindowPayload, 0, len(windows))
+	for _, window := range windows {
+		payload = append(payload, s.toContinuousWindowPayload(window))
+	}
+
+	c.JSON(http.StatusOK, gin.H{"windows": payload})
 }
 
 func (s *Service) listAuditLogs(c *gin.Context) {
@@ -454,6 +657,45 @@ func (s *Service) claimTask(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"task": s.toTaskPayload(c, task, nil, nil)})
+}
+
+func (s *Service) claimContinuousProfileWindow(c *gin.Context) {
+	agentID := strings.TrimSpace(c.Query("agent_id"))
+	if agentID == "" {
+		s.writeError(c, http.StatusBadRequest, errors.New("agent_id query parameter is required"))
+		return
+	}
+
+	now := time.Now().UTC()
+	var window *minidrop.ContinuousProfileWindow
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var agent minidrop.Agent
+		if err := tx.First(&agent, "id = ?", agentID).Error; err != nil {
+			return err
+		}
+		if agent.Status != minidrop.AgentStatusOnline {
+			return errors.New("agent is offline")
+		}
+
+		var err error
+		window, err = s.materializeDueContinuousWindowForAgent(tx, agentID, now)
+		return err
+	})
+	if err != nil {
+		if err.Error() == "agent is offline" {
+			s.writeError(c, http.StatusConflict, err)
+			return
+		}
+		s.writeError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	if window == nil {
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"window": s.toContinuousWindowPayload(*window)})
 }
 
 func (s *Service) markTaskUploading(c *gin.Context) {
@@ -564,14 +806,159 @@ func (s *Service) transitionTask(tx *gorm.DB, task *minidrop.Task, next minidrop
 		return err
 	}
 
-	return tx.Create(&minidrop.TaskStatusEvent{
+	if err := tx.Create(&minidrop.TaskStatusEvent{
 		ID:         minidrop.GenerateID("evt"),
 		TaskID:     task.ID,
 		FromStatus: from,
 		ToStatus:   next,
 		Reason:     reason,
 		CreatedAt:  now,
-	}).Error
+	}).Error; err != nil {
+		return err
+	}
+
+	s.log.Info(
+		"task status transitioned",
+		"task_id", task.ID,
+		"target_agent_id", task.TargetAgentID,
+		"collector_type", task.CollectorType,
+		"from_status", from,
+		"to_status", next,
+		"reason", reason,
+	)
+
+	if task.ContinuousWindowID != "" {
+		return tx.Model(&minidrop.ContinuousProfileWindow{}).
+			Where("id = ?", task.ContinuousWindowID).
+			Updates(map[string]any{
+				"status":        next,
+				"status_reason": reason,
+				"updated_at":    now,
+			}).Error
+	}
+
+	return nil
+}
+
+func (s *Service) materializeDueContinuousWindowForAgent(tx *gorm.DB, agentID string, now time.Time) (*minidrop.ContinuousProfileWindow, error) {
+	var profiles []minidrop.ContinuousProfile
+	if err := tx.Where("enabled = ? AND target_agent_id = ?", true, agentID).
+		Order("last_window_start_at asc, created_at asc").
+		Find(&profiles).Error; err != nil {
+		return nil, err
+	}
+
+	for i := range profiles {
+		if !continuousProfileDue(profiles[i], now) {
+			continue
+		}
+		_, window, err := s.materializeContinuousWindow(tx, &profiles[i], now, "continuous profiling window scheduled")
+		if err != nil {
+			return nil, err
+		}
+		if window != nil {
+			return window, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func (s *Service) materializeContinuousWindow(tx *gorm.DB, profile *minidrop.ContinuousProfile, now time.Time, reason string) (*minidrop.Task, *minidrop.ContinuousProfileWindow, error) {
+	windowStart := nextContinuousWindowStart(*profile, now)
+	windowEnd := windowStart.Add(time.Duration(profile.WindowDurationSec) * time.Second)
+
+	var existing minidrop.ContinuousProfileWindow
+	err := tx.Where("profile_id = ? AND window_start_at = ?", profile.ID, windowStart).First(&existing).Error
+	if err == nil {
+		return nil, &existing, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil, err
+	}
+
+	windowID := minidrop.GenerateID("cwin")
+	task := minidrop.Task{
+		ID:                  minidrop.GenerateID("tsk"),
+		TargetPID:           profile.TargetPID,
+		TargetAgentID:       profile.TargetAgentID,
+		SampleDurationSec:   profile.SampleDurationSec,
+		SampleRateHz:        profile.SampleRateHz,
+		CollectorType:       profile.CollectorType,
+		ContinuousProfileID: profile.ID,
+		ContinuousWindowID:  windowID,
+		Status:              minidrop.TaskStatusPending,
+		StatusReason:        reason,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+	window := minidrop.ContinuousProfileWindow{
+		ID:            windowID,
+		ProfileID:     profile.ID,
+		TaskID:        task.ID,
+		WindowStartAt: windowStart,
+		WindowEndAt:   windowEnd,
+		Status:        minidrop.TaskStatusPending,
+		StatusReason:  reason,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+
+	if err := tx.Create(&task).Error; err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Create(&minidrop.TaskStatusEvent{
+		ID:         minidrop.GenerateID("evt"),
+		TaskID:     task.ID,
+		FromStatus: "",
+		ToStatus:   minidrop.TaskStatusPending,
+		Reason:     reason,
+		CreatedAt:  now,
+	}).Error; err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Create(&window).Error; err != nil {
+		return nil, nil, err
+	}
+
+	profile.LastWindowStartAt = &windowStart
+	profile.LastScheduledAt = &now
+	profile.UpdatedAt = now
+	if err := tx.Save(profile).Error; err != nil {
+		return nil, nil, err
+	}
+
+	return &task, &window, nil
+}
+
+func continuousProfileDue(profile minidrop.ContinuousProfile, now time.Time) bool {
+	if !profile.Enabled {
+		return false
+	}
+	if profile.LastWindowStartAt == nil {
+		return true
+	}
+	interval := time.Duration(profile.IntervalSec) * time.Second
+	if interval <= 0 {
+		interval = time.Duration(minidrop.ContinuousWindowDurationSec) * time.Second
+	}
+	return !now.Before(profile.LastWindowStartAt.Add(interval))
+}
+
+func nextContinuousWindowStart(profile minidrop.ContinuousProfile, now time.Time) time.Time {
+	if profile.LastWindowStartAt != nil {
+		interval := time.Duration(profile.IntervalSec) * time.Second
+		if interval <= 0 {
+			interval = time.Duration(minidrop.ContinuousWindowDurationSec) * time.Second
+		}
+		return profile.LastWindowStartAt.Add(interval)
+	}
+
+	windowDuration := time.Duration(profile.WindowDurationSec) * time.Second
+	if windowDuration <= 0 {
+		windowDuration = time.Duration(minidrop.ContinuousWindowDurationSec) * time.Second
+	}
+	return now.Truncate(windowDuration)
 }
 
 func (s *Service) loadTaskBundle(taskID string) (minidrop.Task, []minidrop.TaskStatusEvent, *minidrop.AnalysisResult, error) {
@@ -609,18 +996,20 @@ func (s *Service) toAgentPayload(agent minidrop.Agent) agentPayload {
 
 func (s *Service) toTaskPayload(c *gin.Context, task minidrop.Task, events []minidrop.TaskStatusEvent, result *minidrop.AnalysisResult) taskPayload {
 	payload := taskPayload{
-		ID:                task.ID,
-		TargetPID:         task.TargetPID,
-		TargetAgentID:     task.TargetAgentID,
-		SampleDurationSec: task.SampleDurationSec,
-		SampleRateHz:      task.SampleRateHz,
-		CollectorType:     task.CollectorType,
-		Status:            string(task.Status),
-		StatusReason:      task.StatusReason,
-		CreatedAt:         task.CreatedAt,
-		UpdatedAt:         task.UpdatedAt,
-		StartedAt:         task.StartedAt,
-		FinishedAt:        task.FinishedAt,
+		ID:                  task.ID,
+		TargetPID:           task.TargetPID,
+		TargetAgentID:       task.TargetAgentID,
+		SampleDurationSec:   task.SampleDurationSec,
+		SampleRateHz:        task.SampleRateHz,
+		CollectorType:       task.CollectorType,
+		ContinuousProfileID: task.ContinuousProfileID,
+		ContinuousWindowID:  task.ContinuousWindowID,
+		Status:              string(task.Status),
+		StatusReason:        task.StatusReason,
+		CreatedAt:           task.CreatedAt,
+		UpdatedAt:           task.UpdatedAt,
+		StartedAt:           task.StartedAt,
+		FinishedAt:          task.FinishedAt,
 	}
 
 	if task.RawArtifactPath != "" {
@@ -644,14 +1033,47 @@ func (s *Service) toTaskPayload(c *gin.Context, task minidrop.Task, events []min
 	}
 
 	if result != nil {
-		taskResult := s.toTaskResultPayload(c, *result)
+		taskResult := s.toTaskResultPayload(c, task, *result)
 		payload.Result = &taskResult
 	}
 
 	return payload
 }
 
-func (s *Service) toTaskResultPayload(c *gin.Context, result minidrop.AnalysisResult) taskResultPayload {
+func (s *Service) toContinuousProfilePayload(profile minidrop.ContinuousProfile) continuousProfilePayload {
+	return continuousProfilePayload{
+		ID:                profile.ID,
+		Name:              profile.Name,
+		TargetPID:         profile.TargetPID,
+		TargetAgentID:     profile.TargetAgentID,
+		SampleDurationSec: profile.SampleDurationSec,
+		SampleRateHz:      profile.SampleRateHz,
+		CollectorType:     profile.CollectorType,
+		WindowDurationSec: profile.WindowDurationSec,
+		IntervalSec:       profile.IntervalSec,
+		Enabled:           profile.Enabled,
+		LastWindowStartAt: profile.LastWindowStartAt,
+		LastScheduledAt:   profile.LastScheduledAt,
+		CreatedAt:         profile.CreatedAt,
+		UpdatedAt:         profile.UpdatedAt,
+	}
+}
+
+func (s *Service) toContinuousWindowPayload(window minidrop.ContinuousProfileWindow) continuousWindowPayload {
+	return continuousWindowPayload{
+		ID:            window.ID,
+		ProfileID:     window.ProfileID,
+		TaskID:        window.TaskID,
+		WindowStartAt: window.WindowStartAt,
+		WindowEndAt:   window.WindowEndAt,
+		Status:        string(window.Status),
+		StatusReason:  window.StatusReason,
+		CreatedAt:     window.CreatedAt,
+		UpdatedAt:     window.UpdatedAt,
+	}
+}
+
+func (s *Service) toTaskResultPayload(c *gin.Context, task minidrop.Task, result minidrop.AnalysisResult) taskResultPayload {
 	payload := taskResultPayload{
 		FlamegraphURL: s.artifactURL(c, result.FlamegraphPath),
 		TopNURL:       s.artifactURL(c, result.TopNPath),
@@ -662,8 +1084,43 @@ func (s *Service) toTaskResultPayload(c *gin.Context, result minidrop.AnalysisRe
 	hotspots, err := mustReadTopN(absPath)
 	if err == nil {
 		payload.Hotspots = hotspots
+		payload.Attribution = s.loadOrBuildAttribution(task, result.TopNPath, hotspots)
 	}
 
+	return payload
+}
+
+func (s *Service) loadOrBuildAttribution(task minidrop.Task, topNPath string, hotspots []hotspotPayload) *attributionPayload {
+	var record minidrop.AttributionResult
+	err := s.db.First(&record, "task_id = ?", task.ID).Error
+	if err == nil {
+		payload, decodeErr := attributionPayloadFromRecord(record)
+		if decodeErr == nil {
+			return payload
+		}
+		s.log.Warn("decode persisted attribution failed", "task_id", task.ID, "error", decodeErr)
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		s.log.Warn("load persisted attribution failed", "task_id", task.ID, "error", err)
+	}
+
+	var baselines []minidrop.AttributionBaseline
+	if err := s.db.Order("collector_type asc, function_pattern asc").Find(&baselines).Error; err != nil {
+		s.log.Warn("load attribution baselines failed", "task_id", task.ID, "error", err)
+	}
+
+	payload := buildAttributionWithBaselines(task, topNPath, hotspots, baselines)
+	now := time.Now().UTC()
+	record, buildErr := attributionRecordFromPayload(task.ID, payload, now)
+	if buildErr != nil {
+		s.log.Warn("build attribution record failed", "task_id", task.ID, "error", buildErr)
+		return payload
+	}
+	if err := s.db.Create(&record).Error; err != nil {
+		s.log.Warn("persist attribution failed", "task_id", task.ID, "error", err)
+		return payload
+	}
+	payload.PersistedAt = &record.CreatedAt
 	return payload
 }
 
@@ -679,6 +1136,7 @@ func nonEmptyReason(reason, fallback string) string {
 }
 
 func decodeJSON(data []byte, target any) error {
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	return decoder.Decode(target)
