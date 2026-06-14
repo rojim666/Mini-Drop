@@ -12,6 +12,8 @@ const (
 	CollectorPySpy       = "py-spy"
 
 	ContinuousWindowDurationSec = 300
+	ContinuousScheduleInterval  = "interval"
+	ContinuousScheduleCron      = "cron"
 )
 
 type CreateTaskInput struct {
@@ -30,6 +32,9 @@ type CreateContinuousProfileInput struct {
 	SampleRateHz      int    `json:"sample_rate_hz"`
 	CollectorType     string `json:"collector_type"`
 	IntervalSec       int    `json:"interval_sec"`
+	ScheduleMode      string `json:"schedule_mode"`
+	CronExpression    string `json:"cron_expression"`
+	StaggerSec        int    `json:"stagger_sec"`
 }
 
 func (in *CreateTaskInput) Normalize() {
@@ -44,8 +49,13 @@ func (in *CreateContinuousProfileInput) Normalize() {
 	in.Name = strings.TrimSpace(in.Name)
 	in.TargetAgentID = strings.TrimSpace(in.TargetAgentID)
 	in.CollectorType = strings.ToLower(strings.TrimSpace(in.CollectorType))
+	in.ScheduleMode = strings.ToLower(strings.TrimSpace(in.ScheduleMode))
+	in.CronExpression = strings.TrimSpace(in.CronExpression)
 	if in.CollectorType == "" {
 		in.CollectorType = CollectorMockPerf
+	}
+	if in.ScheduleMode == "" {
+		in.ScheduleMode = ContinuousScheduleInterval
 	}
 	if in.IntervalSec == 0 {
 		in.IntervalSec = ContinuousWindowDurationSec
@@ -85,8 +95,17 @@ func ValidateCreateContinuousProfileInput(in CreateContinuousProfileInput) error
 	if in.SampleDurationSec > ContinuousWindowDurationSec {
 		return errors.New("sample_duration_sec must not exceed the 300 second profiling window")
 	}
+	if in.ScheduleMode != ContinuousScheduleInterval && in.ScheduleMode != ContinuousScheduleCron {
+		return errors.New("schedule_mode must be one of: interval, cron")
+	}
+	if in.ScheduleMode == ContinuousScheduleCron && in.CronExpression == "" {
+		return errors.New("cron_expression is required when schedule_mode=cron")
+	}
 	if in.IntervalSec < 30 || in.IntervalSec > 3600 {
 		return errors.New("interval_sec must be between 30 and 3600")
+	}
+	if in.StaggerSec < 0 || in.StaggerSec > ContinuousWindowDurationSec {
+		return errors.New("stagger_sec must be between 0 and 300")
 	}
 	return nil
 }

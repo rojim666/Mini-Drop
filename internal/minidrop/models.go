@@ -94,7 +94,10 @@ type ContinuousProfile struct {
 	CollectorType     string `gorm:"size:64;not null"`
 	WindowDurationSec int    `gorm:"not null"`
 	IntervalSec       int    `gorm:"not null"`
-	Enabled           bool   `gorm:"not null;index"`
+	ScheduleMode      string `gorm:"size:32"`
+	CronExpression    string `gorm:"size:128"`
+	StaggerSec        int
+	Enabled           bool `gorm:"not null;index"`
 	LastWindowStartAt *time.Time
 	LastScheduledAt   *time.Time
 	CreatedAt         time.Time `gorm:"not null;index"`

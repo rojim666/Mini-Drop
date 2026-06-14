@@ -42,6 +42,9 @@ type continuousProfileRequest struct {
 	SampleRateHz      int    `json:"sample_rate_hz"`
 	CollectorType     string `json:"collector_type"`
 	IntervalSec       int    `json:"interval_sec"`
+	ScheduleMode      string `json:"schedule_mode"`
+	CronExpression    string `json:"cron_expression"`
+	StaggerSec        int    `json:"stagger_sec"`
 }
 
 type continuousProfilePayload struct {
@@ -54,6 +57,9 @@ type continuousProfilePayload struct {
 	CollectorType     string     `json:"collector_type"`
 	WindowDurationSec int        `json:"window_duration_sec"`
 	IntervalSec       int        `json:"interval_sec"`
+	ScheduleMode      string     `json:"schedule_mode"`
+	CronExpression    string     `json:"cron_expression"`
+	StaggerSec        int        `json:"stagger_sec"`
 	Enabled           bool       `json:"enabled"`
 	LastWindowStartAt *time.Time `json:"last_window_start_at,omitempty"`
 	LastScheduledAt   *time.Time `json:"last_scheduled_at,omitempty"`
@@ -568,9 +574,16 @@ func (s *Service) createContinuousProfile(c *gin.Context) {
 		SampleRateHz:      req.SampleRateHz,
 		CollectorType:     req.CollectorType,
 		IntervalSec:       req.IntervalSec,
+		ScheduleMode:      req.ScheduleMode,
+		CronExpression:    req.CronExpression,
+		StaggerSec:        req.StaggerSec,
 	}
 	input.Normalize()
 	if err := minidrop.ValidateCreateContinuousProfileInput(input); err != nil {
+		s.writeError(c, http.StatusBadRequest, err)
+		return
+	}
+	if err := validateContinuousSchedule(input); err != nil {
 		s.writeError(c, http.StatusBadRequest, err)
 		return
 	}
@@ -586,6 +599,9 @@ func (s *Service) createContinuousProfile(c *gin.Context) {
 		CollectorType:     input.CollectorType,
 		WindowDurationSec: minidrop.ContinuousWindowDurationSec,
 		IntervalSec:       input.IntervalSec,
+		ScheduleMode:      input.ScheduleMode,
+		CronExpression:    input.CronExpression,
+		StaggerSec:        input.StaggerSec,
 		Enabled:           true,
 		CreatedAt:         now,
 		UpdatedAt:         now,
@@ -807,8 +823,11 @@ func (s *Service) claimTask(c *gin.Context) {
 			return errors.New("agent is offline")
 		}
 
-		err := tx.Where("target_agent_id = ? AND status = ?", agentID, minidrop.TaskStatusPending).
-			Order("created_at asc").
+		err := tx.Model(&minidrop.Task{}).
+			Joins("LEFT JOIN continuous_profile_windows ON continuous_profile_windows.id = tasks.continuous_window_id").
+			Where("tasks.target_agent_id = ? AND tasks.status = ?", agentID, minidrop.TaskStatusPending).
+			Where("tasks.continuous_window_id = '' OR tasks.continuous_window_id IS NULL OR continuous_profile_windows.window_start_at <= ?", now).
+			Order("tasks.created_at asc").
 			First(&task).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil
@@ -1108,36 +1127,6 @@ func (s *Service) materializeContinuousWindow(tx *gorm.DB, profile *minidrop.Con
 	return &task, &window, nil
 }
 
-func continuousProfileDue(profile minidrop.ContinuousProfile, now time.Time) bool {
-	if !profile.Enabled {
-		return false
-	}
-	if profile.LastWindowStartAt == nil {
-		return true
-	}
-	interval := time.Duration(profile.IntervalSec) * time.Second
-	if interval <= 0 {
-		interval = time.Duration(minidrop.ContinuousWindowDurationSec) * time.Second
-	}
-	return !now.Before(profile.LastWindowStartAt.Add(interval))
-}
-
-func nextContinuousWindowStart(profile minidrop.ContinuousProfile, now time.Time) time.Time {
-	if profile.LastWindowStartAt != nil {
-		interval := time.Duration(profile.IntervalSec) * time.Second
-		if interval <= 0 {
-			interval = time.Duration(minidrop.ContinuousWindowDurationSec) * time.Second
-		}
-		return profile.LastWindowStartAt.Add(interval)
-	}
-
-	windowDuration := time.Duration(profile.WindowDurationSec) * time.Second
-	if windowDuration <= 0 {
-		windowDuration = time.Duration(minidrop.ContinuousWindowDurationSec) * time.Second
-	}
-	return now.Truncate(windowDuration)
-}
-
 func (s *Service) loadTaskBundle(taskID string) (minidrop.Task, []minidrop.TaskStatusEvent, *minidrop.AnalysisResult, error) {
 	var task minidrop.Task
 	if err := s.db.First(&task, "id = ?", taskID).Error; err != nil {
@@ -1240,6 +1229,9 @@ func (s *Service) toContinuousProfilePayload(profile minidrop.ContinuousProfile)
 		CollectorType:     profile.CollectorType,
 		WindowDurationSec: profile.WindowDurationSec,
 		IntervalSec:       profile.IntervalSec,
+		ScheduleMode:      normalizedScheduleMode(profile.ScheduleMode),
+		CronExpression:    profile.CronExpression,
+		StaggerSec:        profile.StaggerSec,
 		Enabled:           profile.Enabled,
 		LastWindowStartAt: profile.LastWindowStartAt,
 		LastScheduledAt:   profile.LastScheduledAt,

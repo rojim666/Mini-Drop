@@ -562,6 +562,40 @@ func TestCreateContinuousProfileCreatesInitialWindow(t *testing.T) {
 	}
 }
 
+func TestCreateContinuousProfileStoresCronScheduleFields(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "agt_schedule_cron",
+		"hostname": "demo-host",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusOK)
+
+	resp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles", map[string]any{
+		"name":                "cron profile",
+		"target_pid":          4321,
+		"target_agent_id":     "agt_schedule_cron",
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+		"schedule_mode":       "cron",
+		"cron_expression":     "*/5 * * * *",
+		"stagger_sec":         30,
+	}, http.StatusCreated)
+	profile := resp["profile"].(map[string]any)
+	if got := profile["schedule_mode"].(string); got != minidrop.ContinuousScheduleCron {
+		t.Fatalf("expected cron schedule mode, got %s", got)
+	}
+	if got := profile["cron_expression"].(string); got != "*/5 * * * *" {
+		t.Fatalf("expected cron expression to persist, got %s", got)
+	}
+	if got := profile["stagger_sec"].(float64); got != 30 {
+		t.Fatalf("expected stagger 30, got %v", got)
+	}
+}
+
 func TestCreateContinuousProfileAutoSelectsLeastBusyAgent(t *testing.T) {
 	svc := newTestService(t)
 	router := svc.Router()
@@ -701,6 +735,81 @@ func TestContinuousWindowTaskStatusSyncsToWindow(t *testing.T) {
 	}
 	if got := summary["done_ratio"].(float64); got != 1 {
 		t.Fatalf("expected done ratio 1, got %v", got)
+	}
+}
+
+func TestClaimTaskSkipsFutureContinuousWindow(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+	now := time.Now().UTC()
+
+	if err := svc.db.Create(&minidrop.Agent{
+		ID:              "agt_future",
+		Hostname:        "future-host",
+		IP:              "127.0.0.1",
+		Version:         "0.1.0",
+		Status:          minidrop.AgentStatusOnline,
+		LastHeartbeatAt: now,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}).Error; err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+
+	profile := minidrop.ContinuousProfile{
+		ID:                "cprof_future",
+		Name:              "future schedule",
+		TargetPID:         4321,
+		TargetAgentID:     "agt_future",
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "mock-perf",
+		WindowDurationSec: minidrop.ContinuousWindowDurationSec,
+		IntervalSec:       300,
+		ScheduleMode:      minidrop.ContinuousScheduleInterval,
+		StaggerSec:        0,
+		Enabled:           true,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+	if err := svc.db.Create(&profile).Error; err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+	windowStart := now.Add(5 * time.Minute)
+	window := minidrop.ContinuousProfileWindow{
+		ID:            "cwin_future",
+		ProfileID:     profile.ID,
+		TaskID:        "tsk_future",
+		WindowStartAt: windowStart,
+		WindowEndAt:   windowStart.Add(5 * time.Minute),
+		Status:        minidrop.TaskStatusPending,
+		StatusReason:  "future window",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if err := svc.db.Create(&window).Error; err != nil {
+		t.Fatalf("create window: %v", err)
+	}
+	if err := svc.db.Create(&minidrop.Task{
+		ID:                  window.TaskID,
+		TargetPID:           4321,
+		TargetAgentID:       profile.TargetAgentID,
+		SampleDurationSec:   15,
+		SampleRateHz:        99,
+		CollectorType:       "mock-perf",
+		ContinuousProfileID: profile.ID,
+		ContinuousWindowID:  window.ID,
+		Status:              minidrop.TaskStatusPending,
+		StatusReason:        "future window",
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}).Error; err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	claimResp := performJSON(t, router, http.MethodGet, "/api/v1/internal/tasks/claim?agent_id=agt_future", nil, http.StatusNoContent)
+	if len(claimResp) != 0 {
+		t.Fatalf("expected no claim payload for future continuous window, got %+v", claimResp)
 	}
 }
 
