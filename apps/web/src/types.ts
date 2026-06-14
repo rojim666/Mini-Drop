@@ -149,6 +149,34 @@ export interface ContinuousWindowFilters {
   limit?: number;
 }
 
+export interface ContinuousTrendWindow {
+  window_id: string;
+  task_id: string;
+  window_start_at: string;
+  window_end_at: string;
+  status: "DONE";
+}
+
+export interface ContinuousTrendPoint {
+  window_id: string;
+  task_id: string;
+  percent: number;
+  samples: number;
+}
+
+export interface ContinuousTrendSeries {
+  function: string;
+  average: number;
+  peak: number;
+  delta: number;
+  points: ContinuousTrendPoint[];
+}
+
+export interface ContinuousTrend {
+  windows: ContinuousTrendWindow[];
+  series: ContinuousTrendSeries[];
+}
+
 export interface CreateContinuousProfileInput {
   name: string;
   target_pid: number;

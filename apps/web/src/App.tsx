@@ -23,6 +23,7 @@ import {
   createTask,
   getAgents,
   getAuditLogs,
+  getContinuousProfileTrends,
   getContinuousProfileWindows,
   getContinuousProfiles,
   getTask,
@@ -32,6 +33,7 @@ import type {
   Agent,
   AuditLog,
   ContinuousProfile,
+  ContinuousTrend,
   ContinuousWindowFilters,
   ContinuousWindow,
   ContinuousWindowSummary,
@@ -84,6 +86,7 @@ function App() {
   const [profiles, setProfiles] = useState<ContinuousProfile[]>([]);
   const [windows, setWindows] = useState<ContinuousWindow[]>([]);
   const [windowSummary, setWindowSummary] = useState<ContinuousWindowSummary | null>(null);
+  const [trend, setTrend] = useState<ContinuousTrend | null>(null);
   const [windowFilters, setWindowFilters] = useState<ContinuousWindowFilters & { range: WindowRangeKey }>(defaultWindowFilters);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -194,16 +197,21 @@ function App() {
     if (!selectedProfileId) {
       setWindows([]);
       setWindowSummary(null);
+      setTrend(null);
       return;
     }
 
     let alive = true;
     const loadWindows = async () => {
       try {
-        const data = await getContinuousProfileWindows(selectedProfileId, buildWindowQuery(windowFilters));
+        const [data, trendData] = await Promise.all([
+          getContinuousProfileWindows(selectedProfileId, buildWindowQuery(windowFilters)),
+          getContinuousProfileTrends(selectedProfileId, 12),
+        ]);
         if (alive) {
           setWindows(data.windows);
           setWindowSummary(data.summary ?? null);
+          setTrend(trendData);
         }
       } catch (profileError) {
         if (alive) {
@@ -394,6 +402,7 @@ function App() {
                     windowSummary={windowSummary}
                     windowFilters={windowFilters}
                     setWindowFilters={setWindowFilters}
+                    trend={trend}
                     agents={agents}
                     continuousInput={continuousInput}
                     setContinuousInput={setContinuousInput}
@@ -965,6 +974,7 @@ function SchedulePage({
   windowSummary,
   windowFilters,
   setWindowFilters,
+  trend,
   agents,
   continuousInput,
   setContinuousInput,
@@ -979,6 +989,7 @@ function SchedulePage({
   windowSummary: ContinuousWindowSummary | null;
   windowFilters: ContinuousWindowFilters & { range: WindowRangeKey };
   setWindowFilters: React.Dispatch<React.SetStateAction<ContinuousWindowFilters & { range: WindowRangeKey }>>;
+  trend: ContinuousTrend | null;
   agents: Agent[];
   continuousInput: CreateContinuousProfileInput;
   setContinuousInput: React.Dispatch<React.SetStateAction<CreateContinuousProfileInput>>;
@@ -1198,6 +1209,7 @@ function SchedulePage({
             ))
           )}
         </div>
+        <TrendPanel trend={trend} onOpenTask={onOpenTask} />
         <table className="data-table">
           <thead>
             <tr>
@@ -1233,6 +1245,81 @@ function SchedulePage({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function TrendPanel({
+  trend,
+  onOpenTask,
+}: {
+  trend: ContinuousTrend | null;
+  onOpenTask: (taskId: string) => void;
+}) {
+  return (
+    <div className="trend-panel">
+      <div className="card-header">
+        <h2>跨窗口热点趋势</h2>
+        <span className="trend-hint">最近完成窗口</span>
+      </div>
+      {!trend || trend.windows.length === 0 || trend.series.length === 0 ? (
+        <EmptyBlock text="当前没有足够的已完成窗口来生成热点趋势。" />
+      ) : (
+        <div className="trend-body">
+          <div className="trend-window-row">
+            {trend.windows.map((window) => (
+              <button
+                key={window.window_id}
+                type="button"
+                className="trend-window-chip"
+                onClick={() => onOpenTask(window.task_id)}
+                title={`${formatDate(window.window_start_at)} - ${formatDate(window.window_end_at)}`}
+              >
+                <span>{formatTimeOnly(window.window_start_at)}</span>
+                <strong>{window.status}</strong>
+              </button>
+            ))}
+          </div>
+          <table className="data-table compact trend-table">
+            <thead>
+              <tr>
+                <th>函数</th>
+                <th>平均占比</th>
+                <th>峰值</th>
+                <th>变化量</th>
+                <th>趋势</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trend.series.map((series) => (
+                <tr key={series.function}>
+                  <td>{series.function}</td>
+                  <td>{series.average.toFixed(1)}%</td>
+                  <td>{series.peak.toFixed(1)}%</td>
+                  <td className={series.delta >= 0 ? "trend-positive" : "trend-negative"}>
+                    {series.delta >= 0 ? "+" : ""}
+                    {series.delta.toFixed(1)}%
+                  </td>
+                  <td>
+                    <div className="trend-sparkline">
+                      {series.points.map((point) => (
+                        <button
+                          key={point.window_id}
+                          type="button"
+                          className="trend-bar"
+                          style={{ height: `${Math.max(point.percent, 3)}%` }}
+                          title={`${point.percent.toFixed(1)}% / ${point.samples} samples`}
+                          onClick={() => onOpenTask(point.task_id)}
+                        />
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

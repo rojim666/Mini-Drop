@@ -661,6 +661,156 @@ func TestContinuousWindowFiltersScopeTimeline(t *testing.T) {
 	performJSON(t, router, http.MethodGet, "/api/v1/continuous-profiles/"+profileID+"/windows?status=BOGUS", nil, http.StatusBadRequest)
 }
 
+func TestContinuousProfileTrendsAggregateTopNWindows(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+
+	profileID := "cprof_trend"
+	base := time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)
+	profile := minidrop.ContinuousProfile{
+		ID:                profileID,
+		Name:              "trend profile",
+		TargetPID:         4321,
+		TargetAgentID:     "agt_trend",
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "mock-perf",
+		WindowDurationSec: minidrop.ContinuousWindowDurationSec,
+		IntervalSec:       300,
+		Enabled:           true,
+		CreatedAt:         base,
+		UpdatedAt:         base,
+	}
+	if err := svc.db.Create(&profile).Error; err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+
+	windows := []minidrop.ContinuousProfileWindow{
+		{
+			ID:            "cwin_trend_new",
+			ProfileID:     profileID,
+			TaskID:        "tsk_trend_new",
+			WindowStartAt: base.Add(5 * time.Minute),
+			WindowEndAt:   base.Add(10 * time.Minute),
+			Status:        minidrop.TaskStatusDone,
+			StatusReason:  "new window complete",
+			CreatedAt:     base,
+			UpdatedAt:     base,
+		},
+		{
+			ID:            "cwin_trend_old",
+			ProfileID:     profileID,
+			TaskID:        "tsk_trend_old",
+			WindowStartAt: base,
+			WindowEndAt:   base.Add(5 * time.Minute),
+			Status:        minidrop.TaskStatusDone,
+			StatusReason:  "old window complete",
+			CreatedAt:     base,
+			UpdatedAt:     base,
+		},
+	}
+	if err := svc.db.Create(&windows).Error; err != nil {
+		t.Fatalf("create trend windows: %v", err)
+	}
+
+	for _, window := range windows {
+		task := minidrop.Task{
+			ID:                  window.TaskID,
+			TargetPID:           4321,
+			TargetAgentID:       "agt_trend",
+			SampleDurationSec:   15,
+			SampleRateHz:        99,
+			CollectorType:       "mock-perf",
+			ContinuousProfileID: profileID,
+			ContinuousWindowID:  window.ID,
+			Status:              minidrop.TaskStatusDone,
+			StatusReason:        "done",
+			CreatedAt:           window.CreatedAt,
+			UpdatedAt:           window.UpdatedAt,
+		}
+		if err := svc.db.Create(&task).Error; err != nil {
+			t.Fatalf("create task %s: %v", task.ID, err)
+		}
+	}
+
+	newTopNPath := writeTestTopN(t, svc, "tsk_trend_new", []hotspotPayload{
+		{Function: "main.expensiveLoop", Samples: 90, Percent: 70.0},
+		{Function: "runtime.mallocgc", Samples: 20, Percent: 15.0},
+	})
+	oldTopNPath := writeTestTopN(t, svc, "tsk_trend_old", []hotspotPayload{
+		{Function: "main.expensiveLoop", Samples: 40, Percent: 30.0},
+		{Function: "storage.writeArtifacts", Samples: 25, Percent: 20.0},
+	})
+
+	results := []minidrop.AnalysisResult{
+		{
+			ID:             "res_trend_new",
+			TaskID:         "tsk_trend_new",
+			FlamegraphPath: "tsk_trend_new/analysis/flamegraph.svg",
+			TopNPath:       newTopNPath,
+			Summary:        "new window",
+			CreatedAt:      base,
+			UpdatedAt:      base,
+		},
+		{
+			ID:             "res_trend_old",
+			TaskID:         "tsk_trend_old",
+			FlamegraphPath: "tsk_trend_old/analysis/flamegraph.svg",
+			TopNPath:       oldTopNPath,
+			Summary:        "old window",
+			CreatedAt:      base,
+			UpdatedAt:      base,
+		},
+	}
+	if err := svc.db.Create(&results).Error; err != nil {
+		t.Fatalf("create analysis results: %v", err)
+	}
+
+	resp := performJSON(t, router, http.MethodGet, "/api/v1/continuous-profiles/"+profileID+"/trends?limit=2", nil, http.StatusOK)
+	trendWindows := resp["windows"].([]any)
+	if len(trendWindows) != 2 {
+		t.Fatalf("expected 2 trend windows, got %d", len(trendWindows))
+	}
+	if got := trendWindows[0].(map[string]any)["window_id"].(string); got != "cwin_trend_new" {
+		t.Fatalf("expected newest window first, got %s", got)
+	}
+
+	series := resp["series"].([]any)
+	if len(series) == 0 {
+		t.Fatal("expected trend series")
+	}
+	first := series[0].(map[string]any)
+	if got := first["function"].(string); got != "main.expensiveLoop" {
+		t.Fatalf("expected expensive loop trend first, got %s", got)
+	}
+	if got := first["delta"].(float64); got != 40 {
+		t.Fatalf("expected delta 40, got %v", got)
+	}
+	points := first["points"].([]any)
+	if got := points[0].(map[string]any)["percent"].(float64); got != 70 {
+		t.Fatalf("expected newest percent 70, got %v", got)
+	}
+
+	performJSON(t, router, http.MethodGet, "/api/v1/continuous-profiles/"+profileID+"/trends?limit=bogus", nil, http.StatusBadRequest)
+}
+
+func writeTestTopN(t *testing.T, svc *Service, taskID string, hotspots []hotspotPayload) string {
+	t.Helper()
+	topNRelPath := filepath.ToSlash(filepath.Join(taskID, "analysis", "topn.json"))
+	topNAbsPath := filepath.Join(svc.cfg.ArtifactDir, filepath.FromSlash(topNRelPath))
+	if err := os.MkdirAll(filepath.Dir(topNAbsPath), 0o755); err != nil {
+		t.Fatalf("create topn dir: %v", err)
+	}
+	data, err := json.Marshal(hotspots)
+	if err != nil {
+		t.Fatalf("marshal topn: %v", err)
+	}
+	if err := os.WriteFile(topNAbsPath, data, 0o644); err != nil {
+		t.Fatalf("write topn: %v", err)
+	}
+	return topNRelPath
+}
+
 func performJSON(t *testing.T, router http.Handler, method, path string, body any, expected int) map[string]any {
 	t.Helper()
 

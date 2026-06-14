@@ -94,6 +94,34 @@ type continuousWindowFilters struct {
 	Limit     int
 }
 
+type continuousTrendWindowPayload struct {
+	WindowID      string    `json:"window_id"`
+	TaskID        string    `json:"task_id"`
+	WindowStartAt time.Time `json:"window_start_at"`
+	WindowEndAt   time.Time `json:"window_end_at"`
+	Status        string    `json:"status"`
+}
+
+type continuousTrendPointPayload struct {
+	WindowID string  `json:"window_id"`
+	TaskID   string  `json:"task_id"`
+	Percent  float64 `json:"percent"`
+	Samples  int     `json:"samples"`
+}
+
+type continuousTrendSeriesPayload struct {
+	Function string                        `json:"function"`
+	Average  float64                       `json:"average"`
+	Peak     float64                       `json:"peak"`
+	Delta    float64                       `json:"delta"`
+	Points   []continuousTrendPointPayload `json:"points"`
+}
+
+type continuousTrendPayload struct {
+	Windows []continuousTrendWindowPayload `json:"windows"`
+	Series  []continuousTrendSeriesPayload `json:"series"`
+}
+
 type apiError struct {
 	Error string `json:"error"`
 }
@@ -213,6 +241,7 @@ func (s *Service) newRouter() *gin.Engine {
 		v1.POST("/continuous-profiles", s.createContinuousProfile)
 		v1.GET("/continuous-profiles/:id", s.getContinuousProfile)
 		v1.GET("/continuous-profiles/:id/windows", s.listContinuousProfileWindows)
+		v1.GET("/continuous-profiles/:id/trends", s.getContinuousProfileTrends)
 		v1.GET("/audit-logs", s.listAuditLogs)
 
 		internal := v1.Group("/internal")
@@ -1197,6 +1226,139 @@ func parseOptionalRFC3339Query(c *gin.Context, name string) (*time.Time, error) 
 	}
 	value = value.UTC()
 	return &value, nil
+}
+
+func (s *Service) getContinuousProfileTrends(c *gin.Context) {
+	windowLimit := 12
+	if rawLimit := strings.TrimSpace(c.Query("limit")); rawLimit != "" {
+		limit, err := strconv.Atoi(rawLimit)
+		if err != nil || limit < 1 || limit > 24 {
+			s.writeError(c, http.StatusBadRequest, errors.New("limit must be between 1 and 24"))
+			return
+		}
+		windowLimit = limit
+	}
+
+	var windows []minidrop.ContinuousProfileWindow
+	if err := s.db.Where("profile_id = ? AND status = ?", c.Param("id"), minidrop.TaskStatusDone).
+		Order("window_start_at desc").
+		Limit(windowLimit).
+		Find(&windows).Error; err != nil {
+		s.writeError(c, http.StatusInternalServerError, err)
+		return
+	}
+	if len(windows) == 0 {
+		c.JSON(http.StatusOK, gin.H{"windows": []continuousTrendWindowPayload{}, "series": []continuousTrendSeriesPayload{}})
+		return
+	}
+
+	// Load top hotspots for each completed window and build a compact cross-window trend.
+	type windowHotspots struct {
+		window   minidrop.ContinuousProfileWindow
+		hotspots []hotspotPayload
+	}
+	records := make([]windowHotspots, 0, len(windows))
+	functionOrder := make([]string, 0, 8)
+	functionSeen := map[string]bool{}
+
+	for _, window := range windows {
+		var task minidrop.Task
+		if err := s.db.First(&task, "id = ?", window.TaskID).Error; err != nil {
+			s.log.Warn("load trend task failed", "window_id", window.ID, "task_id", window.TaskID, "error", err)
+			continue
+		}
+		var result minidrop.AnalysisResult
+		if err := s.db.First(&result, "task_id = ?", window.TaskID).Error; err != nil {
+			s.log.Warn("load trend result failed", "window_id", window.ID, "task_id", window.TaskID, "error", err)
+			continue
+		}
+
+		hotspots, err := mustReadTopN(s.artifactAbsPath(result.TopNPath))
+		if err != nil {
+			s.log.Warn("read trend topn failed", "window_id", window.ID, "task_id", window.TaskID, "error", err)
+			continue
+		}
+
+		records = append(records, windowHotspots{window: window, hotspots: hotspots})
+		for _, hotspot := range hotspots {
+			if !functionSeen[hotspot.Function] {
+				functionSeen[hotspot.Function] = true
+				functionOrder = append(functionOrder, hotspot.Function)
+			}
+		}
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusOK, gin.H{"windows": []continuousTrendWindowPayload{}, "series": []continuousTrendSeriesPayload{}})
+		return
+	}
+	if len(functionOrder) > 5 {
+		functionOrder = functionOrder[:5]
+	}
+
+	windowsPayload := make([]continuousTrendWindowPayload, 0, len(records))
+	seriesMap := make(map[string][]continuousTrendPointPayload, len(functionOrder))
+	for _, function := range functionOrder {
+		seriesMap[function] = []continuousTrendPointPayload{}
+	}
+
+	for _, record := range records {
+		windowsPayload = append(windowsPayload, continuousTrendWindowPayload{
+			WindowID:      record.window.ID,
+			TaskID:        record.window.TaskID,
+			WindowStartAt: record.window.WindowStartAt,
+			WindowEndAt:   record.window.WindowEndAt,
+			Status:        string(record.window.Status),
+		})
+
+		hotspotMap := make(map[string]hotspotPayload, len(record.hotspots))
+		for _, hotspot := range record.hotspots {
+			hotspotMap[hotspot.Function] = hotspot
+		}
+
+		for _, function := range functionOrder {
+			hotspot := hotspotMap[function]
+			seriesMap[function] = append(seriesMap[function], continuousTrendPointPayload{
+				WindowID: record.window.ID,
+				TaskID:   record.window.TaskID,
+				Percent:  hotspot.Percent,
+				Samples:  hotspot.Samples,
+			})
+		}
+	}
+
+	seriesPayload := make([]continuousTrendSeriesPayload, 0, len(functionOrder))
+	for _, function := range functionOrder {
+		points := seriesMap[function]
+		if len(points) == 0 {
+			continue
+		}
+		var total float64
+		peak := 0.0
+		for _, point := range points {
+			total += point.Percent
+			if point.Percent > peak {
+				peak = point.Percent
+			}
+		}
+		average := total / float64(len(points))
+		delta := 0.0
+		if len(points) > 1 {
+			delta = points[0].Percent - points[len(points)-1].Percent
+		}
+		seriesPayload = append(seriesPayload, continuousTrendSeriesPayload{
+			Function: function,
+			Average:  roundFloat(average, 2),
+			Peak:     roundFloat(peak, 2),
+			Delta:    roundFloat(delta, 2),
+			Points:   points,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"windows": windowsPayload,
+		"series":  seriesPayload,
+	})
 }
 
 func (s *Service) toTaskResultPayload(c *gin.Context, task minidrop.Task, result minidrop.AnalysisResult) taskResultPayload {

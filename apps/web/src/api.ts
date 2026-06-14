@@ -2,6 +2,7 @@ import type {
   Agent,
   AuditLog,
   ContinuousProfile,
+  ContinuousTrend,
   ContinuousWindowFilters,
   ContinuousWindow,
   ContinuousWindowSummary,
@@ -77,6 +78,11 @@ export async function getContinuousProfileWindows(profileId: string, filters: Co
   return request<{ windows: ContinuousWindow[]; summary: ContinuousWindowSummary }>(
     `/api/v1/continuous-profiles/${profileId}/windows${query ? `?${query}` : ""}`,
   );
+}
+
+export async function getContinuousProfileTrends(profileId: string, limit = 12) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return request<ContinuousTrend>(`/api/v1/continuous-profiles/${profileId}/trends?${params.toString()}`);
 }
 
 export async function getAuditLogs() {

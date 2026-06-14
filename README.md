@@ -413,6 +413,9 @@ reviewer can verify continuous profiling health without opening every task.
 The same endpoint accepts `status`, `from`, `to`, and `limit` query parameters
 for scoped timeline review, and the Web page exposes those filters with a
 clickable window strip for drilling into the materialized task.
+`GET /api/v1/continuous-profiles/:id/trends` aggregates recent completed window
+TopN files into a compact hotspot trend view, so the plan page can show whether
+the same function is rising, falling, or staying stable across windows.
 
 For a Windows-safe demo, choose `collector_type=mock-perf`, enter the printed
 mock target PID, and keep the default `5 分钟` interval. The first window is

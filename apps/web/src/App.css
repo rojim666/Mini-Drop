@@ -1078,6 +1078,93 @@ button:disabled {
   border-left-color: var(--tc-blue);
 }
 
+.trend-panel {
+  border-bottom: 1px solid var(--tc-border-soft);
+  background: #ffffff;
+}
+
+.trend-hint {
+  color: var(--tc-muted);
+  font-size: 12px;
+}
+
+.trend-body {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px 16px;
+}
+
+.trend-window-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.trend-window-chip {
+  flex: 0 0 92px;
+  min-height: 32px;
+  border: 1px solid var(--tc-border-soft);
+  background: #f7f9fc;
+  color: var(--tc-text-soft);
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.trend-window-chip:hover {
+  border-color: var(--tc-blue);
+  color: var(--tc-blue);
+  background: #f7faff;
+}
+
+.trend-window-chip span {
+  font-size: 12px;
+}
+
+.trend-window-chip strong {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.trend-table th:nth-child(1),
+.trend-table td:nth-child(1) {
+  width: 32%;
+}
+
+.trend-table th:nth-child(5),
+.trend-table td:nth-child(5) {
+  width: 240px;
+}
+
+.trend-positive {
+  color: var(--tc-red);
+}
+
+.trend-negative {
+  color: var(--tc-green);
+}
+
+.trend-sparkline {
+  height: 34px;
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.trend-bar {
+  width: 14px;
+  min-height: 3px;
+  border: 0;
+  background: var(--tc-blue);
+  padding: 0;
+}
+
+.trend-bar:hover {
+  background: var(--tc-blue-hover);
+}
+
 .compare-selector {
   min-height: 54px;
   padding: 10px 16px;
