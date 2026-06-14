@@ -1,4 +1,12 @@
-import type { Agent, AuditLog, CreateTaskInput, Task } from "./types";
+import type {
+  Agent,
+  AuditLog,
+  ContinuousProfile,
+  ContinuousWindow,
+  CreateContinuousProfileInput,
+  CreateTaskInput,
+  Task,
+} from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8080";
 
@@ -36,6 +44,21 @@ export async function createTask(input: CreateTaskInput) {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export async function getContinuousProfiles() {
+  return request<{ profiles: ContinuousProfile[] }>("/api/v1/continuous-profiles");
+}
+
+export async function createContinuousProfile(input: CreateContinuousProfileInput) {
+  return request<{ profile: ContinuousProfile }>("/api/v1/continuous-profiles", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getContinuousProfileWindows(profileId: string) {
+  return request<{ windows: ContinuousWindow[] }>(`/api/v1/continuous-profiles/${profileId}/windows`);
 }
 
 export async function getAuditLogs() {
