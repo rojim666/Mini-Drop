@@ -113,6 +113,16 @@ commands:
 make submission-notes
 ```
 
+To capture the screenshot evidence referenced by `submission-notes`:
+
+```bash
+make capture-submission-artifacts
+```
+
+This writes the full 10-image manifest under
+`artifacts/submission-screenshots/`, including Web pages, evidence files, the
+coverage report, and a MinIO console proof image.
+
 To run the full final preflight before recording:
 
 ```bash
@@ -136,6 +146,7 @@ On Windows PowerShell without `make`, run the helper directly:
 .\scripts\demo\acceptance-snapshot.ps1
 .\scripts\demo\write-recording-checklist.ps1
 .\scripts\demo\write-submission-notes.ps1
+.\scripts\demo\capture-submission-artifacts.ps1
 .\scripts\demo\final-preflight.ps1
 ```
 
@@ -145,6 +156,7 @@ For an alternate-port compose stack:
 .\scripts\demo\check-compose-stack.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
 .\scripts\demo\acceptance-snapshot.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
 .\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
+.\scripts\demo\capture-submission-artifacts.ps1 -WebPort 14173 -MinioConsolePort 19001
 ```
 
 On Linux / WSL2 without `make`, use the Bash helper:

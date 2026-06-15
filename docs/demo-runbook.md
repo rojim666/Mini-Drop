@@ -76,6 +76,7 @@ make acceptance-snapshot
 make demo-evidence
 make recording-checklist
 make submission-notes
+make capture-submission-artifacts
 make coverage
 make final-preflight
 make demo-down
@@ -100,9 +101,15 @@ collector and the exact install or permission command to run next.
 page-by-page capture checklist for the final recording.
 `make submission-notes` writes `artifacts/submission-notes.md`, including the
 expected screenshot file names and a concise commit summary template.
+`make capture-submission-artifacts` captures the 10-image submission manifest
+under `artifacts/submission-screenshots/`, covering Web screens, generated
+evidence files, coverage, and MinIO console proof.
 `make final-preflight` runs the lightweight recording gate, then writes
 `artifacts/final-preflight.md` with the combined check results, command
 outputs, and the final record/no-record decision.
+The final preflight also creates a PID-not-found task by default so the failure
+reason and status-history screenshot has fresh evidence; pass
+`-SkipFailureTask` only when reusing an existing failure task.
 When real collector preflight is included, the report also contains a
 non-blocking `Real collector readiness` step. `BLOCKED` there means the Windows
 compose demo can still be recorded, while WSL2/Linux dependencies must be fixed
@@ -117,6 +124,7 @@ On Windows without `make`, use the PowerShell snapshot helper directly:
 .\scripts\demo\write-demo-evidence.ps1
 .\scripts\demo\write-recording-checklist.ps1
 .\scripts\demo\write-submission-notes.ps1
+.\scripts\demo\capture-submission-artifacts.ps1
 python .\scripts\demo\check_coverage.py
 .\scripts\demo\final-preflight.ps1
 ```
@@ -130,6 +138,7 @@ and evidence helpers:
 .\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
 .\scripts\demo\write-recording-checklist.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
 .\scripts\demo\write-submission-notes.ps1 -ApiPort 18080 -WebPort 14173 -MinioConsolePort 19001
+.\scripts\demo\capture-submission-artifacts.ps1 -WebPort 14173 -MinioConsolePort 19001
 .\scripts\demo\final-preflight.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001 -SeedTasks -IncludeRealPreflight
 ```
 
@@ -142,6 +151,7 @@ bash ./scripts/demo/write-demo-evidence.sh
 bash ./scripts/demo/write-demo-evidence.sh --include-real-preflight
 bash ./scripts/demo/write-recording-checklist.sh
 bash ./scripts/demo/write-submission-notes.sh
+bash ./scripts/demo/capture-submission-artifacts.sh
 bash ./scripts/demo/final-preflight.sh
 ```
 
