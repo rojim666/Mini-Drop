@@ -10,6 +10,8 @@ import {
   LayoutDashboard,
   Loader2,
   Monitor,
+  PauseCircle,
+  PlayCircle,
   RadioTower,
   Rows3,
   Search,
@@ -1177,6 +1179,13 @@ function SchedulePage({
 }) {
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? null;
   const scheduleMode = continuousInput.schedule_mode ?? "interval";
+  const enabledProfiles = profiles.filter((profile) => profile.enabled).length;
+  const activeWindows =
+    (windowSummary?.running_windows ?? 0) + (windowSummary?.pending_windows ?? 0);
+  const latestWindowRange =
+    windowSummary?.latest_window_start_at && windowSummary.latest_window_end_at
+      ? `${formatDate(windowSummary.latest_window_start_at)} - ${formatDate(windowSummary.latest_window_end_at)}`
+      : "暂无窗口";
 
   return (
     <div className="page-stack">
@@ -1187,165 +1196,200 @@ function SchedulePage({
         </div>
       </section>
 
-      <section className="content-grid schedule-grid">
-        <div className="console-card">
-          <CardHeader title="连续计划" />
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>名称</th>
-                <th>目标 PID</th>
-                <th>采集器</th>
-                <th>调度策略</th>
-                <th>错峰</th>
-                <th>状态</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {profiles.length === 0 ? (
-                <tr>
-                  <td colSpan={6}>
-                    <EmptyBlock text="暂无连续计划，请先创建一个 5 分钟窗口计划。" />
-                  </td>
-                </tr>
-              ) : (
-                profiles.map((profile) => (
-                  <tr
-                    key={profile.id}
-                    className={selectedProfileId === profile.id ? "selected-row" : ""}
-                    onClick={() => setSelectedProfileId(profile.id)}
-                  >
-                    <td>{profile.name}</td>
-                    <td>{profile.target_pid}</td>
-                    <td>{profile.collector_type}</td>
-                    <td>{formatSchedulePolicy(profile)}</td>
-                    <td>{formatStagger(profile.stagger_sec)}</td>
-                    <td>{profile.enabled ? "运行中" : "已停用"}</td>
-                    <td>
-                      <button
-                        className="inline-action"
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void onToggleProfile(profile.id, !profile.enabled);
-                        }}
-                      >
-                        {profile.enabled ? "停用" : "启用"}
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      <section className="schedule-overview-strip">
+        <div>
+          <span>计划总数</span>
+          <strong>{profiles.length}</strong>
         </div>
-
-        <div className="console-card form-card">
-          <div className="schedule-form-head">
-            <label>
-              <span>计划名称</span>
-              <input
-                type="text"
-                value={continuousInput.name}
-                onChange={(event) => setContinuousInput((current) => ({ ...current, name: event.target.value }))}
-              />
-            </label>
-            <div className="schedule-mode-row">
-              <span>调度方式</span>
-              <div className="segmented-control" role="group" aria-label="调度方式">
-                <button
-                  type="button"
-                  className={scheduleMode === "interval" ? "active" : ""}
-                  onClick={() => setContinuousInput((current) => ({ ...current, schedule_mode: "interval" }))}
-                >
-                  固定间隔
-                </button>
-                <button
-                  type="button"
-                  className={scheduleMode === "cron" ? "active" : ""}
-                  onClick={() => setContinuousInput((current) => ({ ...current, schedule_mode: "cron" }))}
-                >
-                  Cron
-                </button>
-              </div>
-            </div>
-            {scheduleMode === "interval" ? (
-              <label>
-                <span>窗口间隔</span>
-                <select
-                  value={continuousInput.interval_sec}
-                  onChange={(event) => setContinuousInput((current) => ({ ...current, interval_sec: Number(event.target.value) }))}
-                >
-                  <option value={300}>5 分钟</option>
-                  <option value={600}>10 分钟</option>
-                  <option value={1800}>30 分钟</option>
-                </select>
-              </label>
-            ) : (
-              <label>
-                <span>Cron 表达式</span>
-                <input
-                  type="text"
-                  value={continuousInput.cron_expression ?? ""}
-                  onChange={(event) => setContinuousInput((current) => ({ ...current, cron_expression: event.target.value }))}
-                  placeholder="*/5 * * * *"
-                />
-              </label>
-            )}
-            <label>
-              <span>错峰启动</span>
-              <select
-                value={continuousInput.stagger_sec}
-                onChange={(event) => setContinuousInput((current) => ({ ...current, stagger_sec: Number(event.target.value) }))}
-              >
-                <option value={0}>不延迟</option>
-                <option value={15}>15 秒</option>
-                <option value={30}>30 秒</option>
-                <option value={60}>60 秒</option>
-                <option value={120}>120 秒</option>
-              </select>
-            </label>
-            <div className="schedule-hint-strip">
-              <span>{scheduleMode === "cron" ? "cron" : "interval"}</span>
-              <strong>{previewSchedule(continuousInput)}</strong>
-            </div>
-          </div>
-          <TaskForm
-            agents={agents}
-            taskInput={{
-              target_pid: continuousInput.target_pid,
-              target_agent_id: continuousInput.target_agent_id,
-              sample_duration_sec: continuousInput.sample_duration_sec,
-              sample_rate_hz: continuousInput.sample_rate_hz,
-              collector_type: continuousInput.collector_type,
-            }}
-            setTaskInput={(updater) =>
-              setContinuousInput((current) => {
-                const nextBase =
-                  typeof updater === "function"
-                    ? updater({
-                        target_pid: current.target_pid,
-                        target_agent_id: current.target_agent_id,
-                        sample_duration_sec: current.sample_duration_sec,
-                        sample_rate_hz: current.sample_rate_hz,
-                        collector_type: current.collector_type,
-                      })
-                    : updater;
-                return {
-                  ...current,
-                  ...nextBase,
-                };
-              })
-            }
-            submitting={submitting}
-            onSubmit={onSubmit}
-            mode="continuous"
-          />
+        <div>
+          <span>运行中</span>
+          <strong>{enabledProfiles}</strong>
+        </div>
+        <div>
+          <span>待处理窗口</span>
+          <strong>{activeWindows}</strong>
+        </div>
+        <div>
+          <span>当前计划</span>
+          <strong title={selectedProfile?.name ?? "暂无"}>{selectedProfile?.name ?? "暂无"}</strong>
+        </div>
+        <div className="schedule-overview-wide">
+          <span>最近窗口</span>
+          <strong>{latestWindowRange}</strong>
         </div>
       </section>
 
-      <div className="console-card">
+      <section className="content-grid schedule-grid">
+        <div className="console-card schedule-plan-card">
+          <CardHeader title="连续计划" />
+          {profiles.length === 0 ? (
+            <EmptyBlock text="暂无连续计划，请先创建一个 5 分钟窗口计划。" />
+          ) : (
+            <div className="schedule-plan-list">
+              <div className="schedule-plan-head" aria-hidden="true">
+                <span className="schedule-plan-head-select">
+                  <span>计划名称</span>
+                  <span>采集配置</span>
+                  <span>状态</span>
+                </span>
+                <span>操作</span>
+              </div>
+              {profiles.map((profile) => (
+                <div
+                  key={profile.id}
+                  className={`schedule-plan-row ${selectedProfileId === profile.id ? "selected" : ""}`}
+                >
+                  <button type="button" className="schedule-plan-select" onClick={() => setSelectedProfileId(profile.id)}>
+                    <span className="schedule-plan-main">
+                      <strong title={profile.name}>{profile.name}</strong>
+                      <em>{profile.id}</em>
+                    </span>
+                    <span className="schedule-plan-meta">
+                      <span>PID {profile.target_pid}</span>
+                      <span>{profile.collector_type}</span>
+                      <span>{formatSchedulePolicy(profile)}</span>
+                      <span>错峰 {formatStagger(profile.stagger_sec)}</span>
+                    </span>
+                    <span className={`schedule-state ${profile.enabled ? "enabled" : "paused"}`}>
+                      {profile.enabled ? "运行中" : "已停用"}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="schedule-row-action"
+                    aria-label={`${profile.enabled ? "停用" : "启用"} ${profile.name}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void onToggleProfile(profile.id, !profile.enabled);
+                    }}
+                  >
+                    {profile.enabled ? <PauseCircle size={14} /> : <PlayCircle size={14} />}
+                    {profile.enabled ? "停用" : "启用"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="console-card schedule-create-card">
+          <CardHeader title="创建连续计划" />
+          <div className="schedule-create-body">
+            <div className="schedule-form-head">
+              <div className="form-section-title">调度策略</div>
+              <label>
+                <span>计划名称</span>
+                <input
+                  type="text"
+                  value={continuousInput.name}
+                  onChange={(event) => setContinuousInput((current) => ({ ...current, name: event.target.value }))}
+                />
+              </label>
+              <div className="schedule-mode-row">
+                <span>调度方式</span>
+                <div className="segmented-control" role="group" aria-label="调度方式">
+                  <button
+                    type="button"
+                    className={scheduleMode === "interval" ? "active" : ""}
+                    onClick={() => setContinuousInput((current) => ({ ...current, schedule_mode: "interval" }))}
+                  >
+                    固定间隔
+                  </button>
+                  <button
+                    type="button"
+                    className={scheduleMode === "cron" ? "active" : ""}
+                    onClick={() => setContinuousInput((current) => ({ ...current, schedule_mode: "cron" }))}
+                  >
+                    Cron
+                  </button>
+                </div>
+              </div>
+              {scheduleMode === "interval" ? (
+                <label>
+                  <span>窗口间隔</span>
+                  <select
+                    value={continuousInput.interval_sec}
+                    onChange={(event) =>
+                      setContinuousInput((current) => ({ ...current, interval_sec: Number(event.target.value) }))
+                    }
+                  >
+                    <option value={300}>5 分钟</option>
+                    <option value={600}>10 分钟</option>
+                    <option value={1800}>30 分钟</option>
+                  </select>
+                </label>
+              ) : (
+                <label>
+                  <span>Cron 表达式</span>
+                  <input
+                    type="text"
+                    value={continuousInput.cron_expression ?? ""}
+                    onChange={(event) =>
+                      setContinuousInput((current) => ({ ...current, cron_expression: event.target.value }))
+                    }
+                    placeholder="*/5 * * * *"
+                  />
+                </label>
+              )}
+              <label>
+                <span>错峰启动</span>
+                <select
+                  value={continuousInput.stagger_sec}
+                  onChange={(event) =>
+                    setContinuousInput((current) => ({ ...current, stagger_sec: Number(event.target.value) }))
+                  }
+                >
+                  <option value={0}>不延迟</option>
+                  <option value={15}>15 秒</option>
+                  <option value={30}>30 秒</option>
+                  <option value={60}>60 秒</option>
+                  <option value={120}>120 秒</option>
+                </select>
+              </label>
+              <div className="schedule-hint-strip">
+                <span>{scheduleMode === "cron" ? "cron" : "interval"}</span>
+                <strong>{previewSchedule(continuousInput)}</strong>
+              </div>
+            </div>
+            <div className="schedule-task-section">
+              <div className="form-section-title">采集参数</div>
+              <TaskForm
+                agents={agents}
+                taskInput={{
+                  target_pid: continuousInput.target_pid,
+                  target_agent_id: continuousInput.target_agent_id,
+                  sample_duration_sec: continuousInput.sample_duration_sec,
+                  sample_rate_hz: continuousInput.sample_rate_hz,
+                  collector_type: continuousInput.collector_type,
+                }}
+                setTaskInput={(updater) =>
+                  setContinuousInput((current) => {
+                    const nextBase =
+                      typeof updater === "function"
+                        ? updater({
+                            target_pid: current.target_pid,
+                            target_agent_id: current.target_agent_id,
+                            sample_duration_sec: current.sample_duration_sec,
+                            sample_rate_hz: current.sample_rate_hz,
+                            collector_type: current.collector_type,
+                          })
+                        : updater;
+                    return {
+                      ...current,
+                      ...nextBase,
+                    };
+                  })
+                }
+                submitting={submitting}
+                onSubmit={onSubmit}
+                mode="continuous"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="console-card schedule-window-card">
         <CardHeader title={selectedProfile ? `5 分钟窗口 - ${selectedProfile.name}` : "5 分钟窗口"} />
         <div className="window-filter-bar">
           <label>
@@ -1452,40 +1496,46 @@ function SchedulePage({
           )}
         </div>
         <TrendPanel trend={trend} onOpenTask={onOpenTask} />
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>窗口</th>
-              <th>任务</th>
-              <th>开始</th>
-              <th>结束</th>
-              <th>状态</th>
-              <th>原因</th>
-            </tr>
-          </thead>
-          <tbody>
-            {windows.length === 0 ? (
+        <div className="window-detail-head">
+          <h3>窗口明细</h3>
+          <span>{windows.length > 0 ? `${windows.length} 条窗口记录` : "暂无窗口记录"}</span>
+        </div>
+        <div className="table-scroll">
+          <table className="data-table window-table">
+            <thead>
               <tr>
-                <td colSpan={6}>
-                  <EmptyBlock text="选中计划后，这里会展示最近的 5 分钟窗口。" />
-                </td>
+                <th>窗口</th>
+                <th>任务</th>
+                <th>开始</th>
+                <th>结束</th>
+                <th>状态</th>
+                <th>原因</th>
               </tr>
-            ) : (
-              windows.map((window) => (
-                <tr key={window.id} onClick={() => onOpenTask(window.task_id)}>
-                  <td>{window.id}</td>
-                  <td className="link-cell">{window.task_id}</td>
-                  <td>{formatDate(window.window_start_at)}</td>
-                  <td>{formatDate(window.window_end_at)}</td>
-                  <td>
-                    <StatusTag value={window.status} />
+            </thead>
+            <tbody>
+              {windows.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>
+                    <EmptyBlock text="选中计划后，这里会展示最近的 5 分钟窗口。" />
                   </td>
-                  <td title={window.status_reason}>{window.status_reason}</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                windows.map((window) => (
+                  <tr key={window.id} onClick={() => onOpenTask(window.task_id)}>
+                    <td>{window.id}</td>
+                    <td className="link-cell">{window.task_id}</td>
+                    <td>{formatDate(window.window_start_at)}</td>
+                    <td>{formatDate(window.window_end_at)}</td>
+                    <td>
+                      <StatusTag value={window.status} />
+                    </td>
+                    <td title={window.status_reason}>{window.status_reason}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -1522,54 +1572,56 @@ function TrendPanel({
               </button>
             ))}
           </div>
-          <table className="data-table compact trend-table">
-            <thead>
-              <tr>
-                <th>函数</th>
-                <th>自动标注</th>
-                <th>平均占比</th>
-                <th>峰值</th>
-                <th>变化量</th>
-                <th>基线偏差</th>
-                <th>趋势</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trend.series.map((series) => (
-                <tr key={series.function}>
-                  <td>{series.function}</td>
-                  <td>
-                    <span className={`trend-label ${series.severity}`} title={series.reason}>
-                      {series.label}
-                    </span>
-                  </td>
-                  <td>{series.average.toFixed(1)}%</td>
-                  <td>{series.peak.toFixed(1)}%</td>
-                  <td className={series.delta >= 0 ? "trend-positive" : "trend-negative"}>
-                    {series.delta >= 0 ? "+" : ""}
-                    {series.delta.toFixed(1)}%
-                  </td>
-                  <td>
-                    <BaselineBadge series={series} />
-                  </td>
-                  <td>
-                    <div className="trend-sparkline">
-                      {series.points.map((point) => (
-                        <button
-                          key={point.window_id}
-                          type="button"
-                          className="trend-bar"
-                          style={{ height: `${Math.max(point.percent, 3)}%` }}
-                          title={`${point.percent.toFixed(1)}% / ${point.samples} samples`}
-                          onClick={() => onOpenTask(point.task_id)}
-                        />
-                      ))}
-                    </div>
-                  </td>
+          <div className="table-scroll trend-table-scroll">
+            <table className="data-table compact trend-table">
+              <thead>
+                <tr>
+                  <th>函数</th>
+                  <th>自动标注</th>
+                  <th>平均占比</th>
+                  <th>峰值</th>
+                  <th>变化量</th>
+                  <th>基线偏差</th>
+                  <th>趋势</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {trend.series.map((series) => (
+                  <tr key={series.function}>
+                    <td>{series.function}</td>
+                    <td>
+                      <span className={`trend-label ${series.severity}`} title={series.reason}>
+                        {series.label}
+                      </span>
+                    </td>
+                    <td>{series.average.toFixed(1)}%</td>
+                    <td>{series.peak.toFixed(1)}%</td>
+                    <td className={series.delta >= 0 ? "trend-positive" : "trend-negative"}>
+                      {series.delta >= 0 ? "+" : ""}
+                      {series.delta.toFixed(1)}%
+                    </td>
+                    <td>
+                      <BaselineBadge series={series} />
+                    </td>
+                    <td>
+                      <div className="trend-sparkline">
+                        {series.points.map((point) => (
+                          <button
+                            key={point.window_id}
+                            type="button"
+                            className="trend-bar"
+                            style={{ height: `${Math.max(point.percent, 3)}%` }}
+                            title={`${point.percent.toFixed(1)}% / ${point.samples} samples`}
+                            onClick={() => onOpenTask(point.task_id)}
+                          />
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
