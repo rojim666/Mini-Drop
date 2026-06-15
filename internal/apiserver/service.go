@@ -288,6 +288,19 @@ func mustReadTopN(absPath string) ([]hotspotPayload, error) {
 	return hotspots, nil
 }
 
+func mustReadResourceTimeline(absPath string) (*resourceTimelinePayload, error) {
+	payload, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var timeline resourceTimelinePayload
+	if err := decodeJSON(payload, &timeline); err != nil {
+		return nil, err
+	}
+	return &timeline, nil
+}
+
 func dbConn(db *gorm.DB) (*sql.DB, error) {
 	return db.DB()
 }

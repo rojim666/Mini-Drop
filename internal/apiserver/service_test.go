@@ -328,12 +328,27 @@ func TestTaskResultsIncludeRuleAttribution(t *testing.T) {
 	if err := os.WriteFile(topNAbsPath, data, 0o644); err != nil {
 		t.Fatalf("write topn: %v", err)
 	}
+	timelineRelPath := writeTestResourceTimeline(t, svc, taskID, resourceTimelinePayload{
+		Source:      "perf_script_samples",
+		Signal:      "cpu_cycles",
+		Alignment:   "cpu",
+		Summary:     "perf script samples align with the CPU hotspot window",
+		WindowSec:   15,
+		TopFunction: "main.expensiveLoop",
+		PeakPercent: 88.0,
+		Points: []resourceTimelinePointPayload{
+			{OffsetSec: 0, Value: 35.0, Samples: 8},
+			{OffsetSec: 5, Value: 88.0, Samples: 21},
+			{OffsetSec: 10, Value: 42.0, Samples: 10},
+		},
+	})
 
 	performJSON(t, router, http.MethodPost, "/api/v1/internal/tasks/"+taskID+"/complete", map[string]any{
-		"raw_artifact_path": taskID + "/raw/mock.perf.data.json",
-		"flamegraph_path":   filepath.ToSlash(filepath.Join(taskID, "analysis", "flamegraph.svg")),
-		"topn_path":         topNRelPath,
-		"summary":           "Synthetic CPU profile ready",
+		"raw_artifact_path":      taskID + "/raw/mock.perf.data.json",
+		"flamegraph_path":        filepath.ToSlash(filepath.Join(taskID, "analysis", "flamegraph.svg")),
+		"topn_path":              topNRelPath,
+		"resource_timeline_path": timelineRelPath,
+		"summary":                "Synthetic CPU profile ready",
 	}, http.StatusOK)
 
 	resp := performJSON(t, router, http.MethodGet, "/api/v1/tasks/"+taskID+"/results", nil, http.StatusOK)
@@ -346,6 +361,19 @@ func TestTaskResultsIncludeRuleAttribution(t *testing.T) {
 	if got := source["task_id"].(string); got != taskID {
 		t.Fatalf("expected source task_id %s, got %s", taskID, got)
 	}
+	if got := source["resource_timeline_path"].(string); got != timelineRelPath {
+		t.Fatalf("expected source resource timeline path %s, got %s", timelineRelPath, got)
+	}
+	resourceTimeline := attribution["resource_timeline"].(map[string]any)
+	if got := resourceTimeline["source"].(string); got != "perf_script_samples" {
+		t.Fatalf("expected analyzer resource timeline source, got %s", got)
+	}
+	if got := resourceTimeline["top_function"].(string); got != "main.expensiveLoop" {
+		t.Fatalf("expected timeline top function, got %s", got)
+	}
+	if points := resourceTimeline["points"].([]any); len(points) != 3 {
+		t.Fatalf("expected three resource timeline points, got %+v", points)
+	}
 	evidence := attribution["evidence"].([]any)
 	if len(evidence) < 3 {
 		t.Fatalf("expected attribution evidence, got %d items", len(evidence))
@@ -355,8 +383,12 @@ func TestTaskResultsIncludeRuleAttribution(t *testing.T) {
 		row := item.(map[string]any)
 		if row["kind"] == "resource_timeline" {
 			foundTimeline = true
-			if !strings.Contains(row["detail"].(string), "CPU") {
-				t.Fatalf("expected resource timeline detail to mention CPU alignment, got %+v", row)
+			if !strings.Contains(row["detail"].(string), "perf script samples") {
+				t.Fatalf("expected resource timeline detail to mention analyzer timeline, got %+v", row)
+			}
+			nested := row["resource_timeline"].(map[string]any)
+			if nested["source"] != "perf_script_samples" {
+				t.Fatalf("expected nested resource timeline evidence, got %+v", nested)
 			}
 		}
 	}
@@ -385,12 +417,19 @@ func TestTaskResultsIncludeRuleAttribution(t *testing.T) {
 	if err := svc.DB().First(&persisted, "task_id = ?", taskID).Error; err != nil {
 		t.Fatalf("expected persisted attribution result: %v", err)
 	}
+	if !strings.Contains(persisted.ResourceTimelineJSON, "perf_script_samples") {
+		t.Fatalf("expected persisted resource timeline JSON, got %s", persisted.ResourceTimelineJSON)
+	}
 
 	secondResp := performJSON(t, router, http.MethodGet, "/api/v1/tasks/"+taskID+"/results", nil, http.StatusOK)
 	secondResult := secondResp["result"].(map[string]any)
 	secondAttribution := secondResult["attribution"].(map[string]any)
 	if _, ok := secondAttribution["persisted_at"].(string); !ok {
 		t.Fatalf("expected second attribution response to include persisted_at: %+v", secondAttribution)
+	}
+	secondTimeline := secondAttribution["resource_timeline"].(map[string]any)
+	if got := secondTimeline["source"].(string); got != "perf_script_samples" {
+		t.Fatalf("expected persisted resource timeline source, got %s", got)
 	}
 }
 
@@ -496,6 +535,49 @@ func TestBuildAttributionIncludesBaselineEvidence(t *testing.T) {
 	}
 	if !strings.Contains(got.Prompt, "baseline=storage baseline") || !strings.Contains(got.Prompt, "timeline=io_pressure") {
 		t.Fatalf("expected prompt to include baseline summary, got %q", got.Prompt)
+	}
+}
+
+func TestLoadAttributionRebuildsLegacyRecordWithResourceTimeline(t *testing.T) {
+	svc := newTestService(t)
+	now := time.Now().UTC()
+	task := minidrop.Task{
+		ID:                "tsk_legacy_attribution",
+		TargetPID:         4321,
+		TargetAgentID:     "agt_legacy",
+		SampleDurationSec: 10,
+		SampleRateHz:      99,
+		CollectorType:     minidrop.CollectorMockPerf,
+		Status:            minidrop.TaskStatusDone,
+		StatusReason:      "done",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+	hotspots := []hotspotPayload{{Function: "main.spinCPU", Samples: 20, Percent: 66.0}}
+	legacyPayload := buildAttribution(task, "tsk_legacy_attribution/analysis/topn.json", hotspots)
+	legacyRecord, err := attributionRecordFromPayload(task.ID, legacyPayload, now)
+	if err != nil {
+		t.Fatalf("build legacy attribution: %v", err)
+	}
+	legacyRecord.ResourceTimelineJSON = ""
+	if err := svc.db.Create(&legacyRecord).Error; err != nil {
+		t.Fatalf("create legacy attribution: %v", err)
+	}
+
+	got := svc.loadOrBuildAttribution(task, "tsk_legacy_attribution/analysis/topn.json", "", hotspots)
+	if got == nil || got.ResourceTimeline == nil {
+		t.Fatalf("expected rebuilt resource timeline, got %+v", got)
+	}
+	if got.ResourceTimeline.Source != "derived_from_profile" {
+		t.Fatalf("expected derived timeline source, got %+v", got.ResourceTimeline)
+	}
+
+	var persisted minidrop.AttributionResult
+	if err := svc.db.First(&persisted, "task_id = ?", task.ID).Error; err != nil {
+		t.Fatalf("load rebuilt attribution: %v", err)
+	}
+	if !strings.Contains(persisted.ResourceTimelineJSON, "derived_from_profile") {
+		t.Fatalf("expected rebuilt timeline to persist, got %s", persisted.ResourceTimelineJSON)
 	}
 }
 
@@ -1202,6 +1284,23 @@ func writeTestTopN(t *testing.T, svc *Service, taskID string, hotspots []hotspot
 		t.Fatalf("write topn: %v", err)
 	}
 	return topNRelPath
+}
+
+func writeTestResourceTimeline(t *testing.T, svc *Service, taskID string, timeline resourceTimelinePayload) string {
+	t.Helper()
+	timelineRelPath := filepath.ToSlash(filepath.Join(taskID, "analysis", "resource_timeline.json"))
+	timelineAbsPath := filepath.Join(svc.cfg.ArtifactDir, filepath.FromSlash(timelineRelPath))
+	if err := os.MkdirAll(filepath.Dir(timelineAbsPath), 0o755); err != nil {
+		t.Fatalf("create resource timeline dir: %v", err)
+	}
+	data, err := json.Marshal(timeline)
+	if err != nil {
+		t.Fatalf("marshal resource timeline: %v", err)
+	}
+	if err := os.WriteFile(timelineAbsPath, data, 0o644); err != nil {
+		t.Fatalf("write resource timeline: %v", err)
+	}
+	return timelineRelPath
 }
 
 func performJSON(t *testing.T, router http.Handler, method, path string, body any, expected int) map[string]any {

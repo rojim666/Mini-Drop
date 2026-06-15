@@ -31,10 +31,14 @@ type baselineComparison struct {
 }
 
 type resourceTimelineComparison struct {
+	Source      string
 	Signal      string
 	Summary     string
 	Alignment   string
+	WindowSec   int
+	TopFunction string
 	PeakPercent float64
+	Points      []resourceTimelinePointPayload
 }
 
 func buildAttribution(task minidrop.Task, topNPath string, hotspots []hotspotPayload) *attributionPayload {
@@ -43,17 +47,23 @@ func buildAttribution(task minidrop.Task, topNPath string, hotspots []hotspotPay
 
 func buildAttributionWithBaselines(task minidrop.Task, topNPath string, hotspots []hotspotPayload, baselines []minidrop.AttributionBaseline) *attributionPayload {
 	runner := attributionToolRunner{baselines: baselines}
-	return runner.build(task, topNPath, hotspots)
+	return runner.build(task, topNPath, hotspots, nil, "")
 }
 
-func (runner *attributionToolRunner) build(task minidrop.Task, topNPath string, hotspots []hotspotPayload) *attributionPayload {
+func buildAttributionWithBaselinesAndTimeline(task minidrop.Task, topNPath string, hotspots []hotspotPayload, baselines []minidrop.AttributionBaseline, timeline *resourceTimelinePayload, timelinePath string) *attributionPayload {
+	runner := attributionToolRunner{baselines: baselines}
+	return runner.build(task, topNPath, hotspots, timeline, timelinePath)
+}
+
+func (runner *attributionToolRunner) build(task minidrop.Task, topNPath string, hotspots []hotspotPayload, externalTimeline *resourceTimelinePayload, timelinePath string) *attributionPayload {
 	hotspots = normalizeHotspots(hotspots)
 	source := attributionSourcePayload{
-		TaskID:            task.ID,
-		CollectorType:     task.CollectorType,
-		SampleDurationSec: task.SampleDurationSec,
-		SampleRateHz:      task.SampleRateHz,
-		TopNPath:          topNPath,
+		TaskID:               task.ID,
+		CollectorType:        task.CollectorType,
+		SampleDurationSec:    task.SampleDurationSec,
+		SampleRateHz:         task.SampleRateHz,
+		TopNPath:             topNPath,
+		ResourceTimelinePath: strings.TrimSpace(timelinePath),
 	}
 	runner.recordTool("get_top_hotspots", fmt.Sprintf("task_id=%s topn_path=%s", task.ID, topNPath), fmt.Sprintf("%d hotspots", len(hotspots)))
 
@@ -90,7 +100,8 @@ func (runner *attributionToolRunner) build(task minidrop.Task, topNPath string, 
 
 	rule := runner.matchRules(hotspots)
 	baseline := runner.compareBaseline(task, hotspots)
-	timeline := runner.getResourceTimeline(task, hotspots, rule.Classification)
+	timeline := runner.getResourceTimeline(task, hotspots, rule.Classification, externalTimeline, timelinePath)
+	timelinePayload := timeline.toPayload()
 	classification := rule.Classification
 	conclusion := "CPU 热点较分散，需要结合火焰图继续定位调用路径"
 	recommendations := []string{
@@ -144,10 +155,11 @@ func (runner *attributionToolRunner) build(task minidrop.Task, topNPath string, 
 	}
 
 	evidence = append(evidence, attributionEvidencePayload{
-		Kind:     "resource_timeline",
-		Detail:   timeline.Summary,
-		Function: top.Function,
-		Percent:  timeline.PeakPercent,
+		Kind:             "resource_timeline",
+		Detail:           timeline.Summary,
+		Function:         top.Function,
+		Percent:          timeline.PeakPercent,
+		ResourceTimeline: &timelinePayload,
 	})
 	recommendations = append(recommendations, timelineRecommendation(timeline.Signal))
 
@@ -163,13 +175,14 @@ func (runner *attributionToolRunner) build(task minidrop.Task, topNPath string, 
 	})
 
 	return &attributionPayload{
-		Conclusion:      conclusion,
-		Confidence:      roundFloat(confidence, 2),
-		Evidence:        evidence,
-		Recommendations: recommendations,
-		Source:          source,
-		ToolTrace:       runner.trace,
-		Prompt:          attributionPrompt(task, hotspots, &baseline, &timeline),
+		Conclusion:       conclusion,
+		Confidence:       roundFloat(confidence, 2),
+		Evidence:         evidence,
+		Recommendations:  recommendations,
+		Source:           source,
+		ResourceTimeline: &timelinePayload,
+		ToolTrace:        runner.trace,
+		Prompt:           attributionPrompt(task, hotspots, &baseline, &timeline),
 	}
 }
 
@@ -212,16 +225,38 @@ func (runner *attributionToolRunner) compareBaseline(task minidrop.Task, hotspot
 	return baselineComparison{}
 }
 
-func (runner *attributionToolRunner) getResourceTimeline(task minidrop.Task, hotspots []hotspotPayload, classification string) resourceTimelineComparison {
+func (runner *attributionToolRunner) getResourceTimeline(task minidrop.Task, hotspots []hotspotPayload, classification string, externalTimeline *resourceTimelinePayload, timelinePath string) resourceTimelineComparison {
 	top := hotspots[0]
 	duration := task.SampleDurationSec
 	if duration <= 0 {
 		duration = 1
 	}
 
+	if externalTimeline != nil {
+		timeline := resourceTimelineComparison{
+			Source:      nonEmptyString(externalTimeline.Source, "analyzer_resource_timeline"),
+			Signal:      nonEmptyString(externalTimeline.Signal, signalForClassification(classification)),
+			Alignment:   nonEmptyString(externalTimeline.Alignment, alignmentForClassification(classification)),
+			Summary:     nonEmptyString(externalTimeline.Summary, fmt.Sprintf("%ds 采样窗口读取 analyzer 资源时间线，Top1 为 %s", duration, top.Function)),
+			WindowSec:   nonZeroInt(externalTimeline.WindowSec, duration),
+			TopFunction: nonEmptyString(externalTimeline.TopFunction, top.Function),
+			PeakPercent: roundFloat(nonZeroFloat(externalTimeline.PeakPercent, top.Percent), 1),
+			Points:      normalizeTimelinePoints(externalTimeline.Points, duration, top),
+		}
+		runner.recordTool(
+			"get_resource_timeline",
+			fmt.Sprintf("task_id=%s source_path=%s source=%s", task.ID, strings.TrimSpace(timelinePath), timeline.Source),
+			fmt.Sprintf("%s alignment=%s points=%d peak=%.1f", timeline.Signal, timeline.Alignment, len(timeline.Points), timeline.PeakPercent),
+		)
+		return timeline
+	}
+
 	timeline := resourceTimelineComparison{
+		Source:      "derived_from_profile",
 		Signal:      "cpu_hotspot",
 		Alignment:   "cpu",
+		WindowSec:   duration,
+		TopFunction: top.Function,
 		PeakPercent: roundFloat(top.Percent, 1),
 		Summary: fmt.Sprintf(
 			"%ds 采样窗口内 CPU 热点与 %s 对齐，Top1 占 %.1f%%",
@@ -274,13 +309,27 @@ func (runner *attributionToolRunner) getResourceTimeline(task minidrop.Task, hot
 			top.Percent,
 		)
 	}
+	timeline.Points = derivedTimelinePoints(duration, top.Percent, top.Samples)
 
 	runner.recordTool(
 		"get_resource_timeline",
-		fmt.Sprintf("task_id=%s collector=%s window=%ds classification=%s", task.ID, task.CollectorType, duration, classification),
-		fmt.Sprintf("%s: %s", timeline.Signal, timeline.Summary),
+		fmt.Sprintf("task_id=%s collector=%s window=%ds classification=%s source=%s", task.ID, task.CollectorType, duration, classification, timeline.Source),
+		fmt.Sprintf("%s alignment=%s points=%d peak=%.1f", timeline.Signal, timeline.Alignment, len(timeline.Points), timeline.PeakPercent),
 	)
 	return timeline
+}
+
+func (timeline resourceTimelineComparison) toPayload() resourceTimelinePayload {
+	return resourceTimelinePayload{
+		Source:      timeline.Source,
+		Signal:      timeline.Signal,
+		Alignment:   timeline.Alignment,
+		Summary:     timeline.Summary,
+		WindowSec:   timeline.WindowSec,
+		TopFunction: timeline.TopFunction,
+		PeakPercent: roundFloat(timeline.PeakPercent, 1),
+		Points:      timeline.Points,
+	}
 }
 
 func timelineRecommendation(signal string) string {
@@ -298,6 +347,109 @@ func timelineRecommendation(signal string) string {
 	default:
 		return "把 CPU 利用率时间线与 TopN 热点窗口对齐，确认热点是否稳定出现在采样峰值附近。"
 	}
+}
+
+func signalForClassification(classification string) string {
+	switch classification {
+	case "runtime":
+		return "scheduler_wait"
+	case "io":
+		return "io_pressure"
+	case "alloc":
+		return "memory_pressure"
+	case "mixed":
+		return "mixed_cpu"
+	default:
+		return "cpu_hotspot"
+	}
+}
+
+func alignmentForClassification(classification string) string {
+	switch classification {
+	case "runtime":
+		return "runtime/scheduler"
+	case "io":
+		return "io/storage"
+	case "alloc":
+		return "allocation/gc"
+	case "mixed":
+		return "mixed"
+	default:
+		return "cpu"
+	}
+}
+
+func normalizeTimelinePoints(points []resourceTimelinePointPayload, duration int, top hotspotPayload) []resourceTimelinePointPayload {
+	if len(points) == 0 {
+		return derivedTimelinePoints(duration, top.Percent, top.Samples)
+	}
+	normalized := make([]resourceTimelinePointPayload, 0, len(points))
+	for _, point := range points {
+		if point.OffsetSec < 0 {
+			point.OffsetSec = 0
+		}
+		if point.Value < 0 {
+			point.Value = 0
+		}
+		point.OffsetSec = roundFloat(point.OffsetSec, 1)
+		point.Value = roundFloat(point.Value, 1)
+		normalized = append(normalized, point)
+	}
+	return normalized
+}
+
+func derivedTimelinePoints(duration int, peakPercent float64, samples int) []resourceTimelinePointPayload {
+	if duration <= 0 {
+		duration = 1
+	}
+	buckets := minInt(duration, 12)
+	if buckets <= 0 {
+		buckets = 1
+	}
+	width := float64(duration) / float64(buckets)
+	center := float64(buckets-1) / 2
+	points := make([]resourceTimelinePointPayload, 0, buckets)
+	for i := 0; i < buckets; i++ {
+		distance := 0.0
+		if center > 0 {
+			distance = math.Abs(float64(i)-center) / center
+		}
+		value := peakPercent * (1 - distance*0.45)
+		if value < math.Min(peakPercent, 8) {
+			value = math.Min(peakPercent, 8)
+		}
+		pointSamples := 0
+		if samples > 0 {
+			pointSamples = int(math.Max(1, math.Round(float64(samples)/float64(buckets))))
+		}
+		points = append(points, resourceTimelinePointPayload{
+			OffsetSec: roundFloat(float64(i)*width, 1),
+			Value:     roundFloat(value, 1),
+			Samples:   pointSamples,
+		})
+	}
+	return points
+}
+
+func nonEmptyString(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return strings.TrimSpace(value)
+}
+
+func nonZeroInt(value, fallback int) int {
+	if value == 0 {
+		return fallback
+	}
+	return value
+}
+
+func nonZeroFloat(value, fallback float64) float64 {
+	if value == 0 {
+		return fallback
+	}
+	return value
 }
 
 func (runner *attributionToolRunner) recordTool(name, input, output string) {
@@ -394,17 +546,26 @@ func attributionPayloadFromRecord(record minidrop.AttributionResult) (*attributi
 	if err := decodeJSON([]byte(record.ToolTraceJSON), &trace); err != nil {
 		return nil, err
 	}
+	var timeline *resourceTimelinePayload
+	if strings.TrimSpace(record.ResourceTimelineJSON) != "" {
+		var decoded resourceTimelinePayload
+		if err := decodeJSON([]byte(record.ResourceTimelineJSON), &decoded); err != nil {
+			return nil, err
+		}
+		timeline = &decoded
+	}
 
 	persistedAt := record.UpdatedAt
 	return &attributionPayload{
-		Conclusion:      record.Conclusion,
-		Confidence:      record.Confidence,
-		Evidence:        evidence,
-		Recommendations: recommendations,
-		Source:          source,
-		ToolTrace:       trace,
-		Prompt:          record.Prompt,
-		PersistedAt:     &persistedAt,
+		Conclusion:       record.Conclusion,
+		Confidence:       record.Confidence,
+		Evidence:         evidence,
+		Recommendations:  recommendations,
+		Source:           source,
+		ResourceTimeline: timeline,
+		ToolTrace:        trace,
+		Prompt:           record.Prompt,
+		PersistedAt:      &persistedAt,
 	}, nil
 }
 
@@ -425,19 +586,27 @@ func attributionRecordFromPayload(taskID string, payload *attributionPayload, no
 	if err != nil {
 		return minidrop.AttributionResult{}, err
 	}
+	timelineJSON := []byte("{}")
+	if payload.ResourceTimeline != nil {
+		timelineJSON, err = json.Marshal(payload.ResourceTimeline)
+		if err != nil {
+			return minidrop.AttributionResult{}, err
+		}
+	}
 
 	return minidrop.AttributionResult{
-		ID:                  minidrop.GenerateID("atr"),
-		TaskID:              taskID,
-		Conclusion:          payload.Conclusion,
-		Confidence:          payload.Confidence,
-		EvidenceJSON:        string(evidenceJSON),
-		RecommendationsJSON: string(recommendationsJSON),
-		SourceJSON:          string(sourceJSON),
-		ToolTraceJSON:       string(traceJSON),
-		Prompt:              payload.Prompt,
-		CreatedAt:           now,
-		UpdatedAt:           now,
+		ID:                   minidrop.GenerateID("atr"),
+		TaskID:               taskID,
+		Conclusion:           payload.Conclusion,
+		Confidence:           payload.Confidence,
+		EvidenceJSON:         string(evidenceJSON),
+		RecommendationsJSON:  string(recommendationsJSON),
+		SourceJSON:           string(sourceJSON),
+		ResourceTimelineJSON: string(timelineJSON),
+		ToolTraceJSON:        string(traceJSON),
+		Prompt:               payload.Prompt,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}, nil
 }
 

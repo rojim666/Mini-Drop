@@ -51,13 +51,14 @@ type AuditLog struct {
 }
 
 type AnalysisResult struct {
-	ID             string    `gorm:"primaryKey;size:64"`
-	TaskID         string    `gorm:"size:64;not null;uniqueIndex"`
-	FlamegraphPath string    `gorm:"size:1024;not null"`
-	TopNPath       string    `gorm:"size:1024;not null"`
-	Summary        string    `gorm:"size:2048;not null"`
-	CreatedAt      time.Time `gorm:"not null"`
-	UpdatedAt      time.Time `gorm:"not null"`
+	ID                   string    `gorm:"primaryKey;size:64"`
+	TaskID               string    `gorm:"size:64;not null;uniqueIndex"`
+	FlamegraphPath       string    `gorm:"size:1024;not null"`
+	TopNPath             string    `gorm:"size:1024;not null"`
+	ResourceTimelinePath string    `gorm:"size:1024"`
+	Summary              string    `gorm:"size:2048;not null"`
+	CreatedAt            time.Time `gorm:"not null"`
+	UpdatedAt            time.Time `gorm:"not null"`
 }
 
 type AttributionBaseline struct {
@@ -71,17 +72,18 @@ type AttributionBaseline struct {
 }
 
 type AttributionResult struct {
-	ID                  string    `gorm:"primaryKey;size:64"`
-	TaskID              string    `gorm:"size:64;not null;uniqueIndex"`
-	Conclusion          string    `gorm:"size:2048;not null"`
-	Confidence          float64   `gorm:"not null"`
-	EvidenceJSON        string    `gorm:"type:text;not null"`
-	RecommendationsJSON string    `gorm:"type:text;not null"`
-	SourceJSON          string    `gorm:"type:text;not null"`
-	ToolTraceJSON       string    `gorm:"type:text;not null"`
-	Prompt              string    `gorm:"type:text;not null"`
-	CreatedAt           time.Time `gorm:"not null"`
-	UpdatedAt           time.Time `gorm:"not null"`
+	ID                   string    `gorm:"primaryKey;size:64"`
+	TaskID               string    `gorm:"size:64;not null;uniqueIndex"`
+	Conclusion           string    `gorm:"size:2048;not null"`
+	Confidence           float64   `gorm:"not null"`
+	EvidenceJSON         string    `gorm:"type:text;not null"`
+	RecommendationsJSON  string    `gorm:"type:text;not null"`
+	SourceJSON           string    `gorm:"type:text;not null"`
+	ResourceTimelineJSON string    `gorm:"type:text"`
+	ToolTraceJSON        string    `gorm:"type:text;not null"`
+	Prompt               string    `gorm:"type:text;not null"`
+	CreatedAt            time.Time `gorm:"not null"`
+	UpdatedAt            time.Time `gorm:"not null"`
 }
 
 type ContinuousProfile struct {

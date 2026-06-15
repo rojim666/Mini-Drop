@@ -59,12 +59,17 @@ class AnalyzerTests(unittest.TestCase):
             result = json.loads(stdout.getvalue())
             self.assertEqual(result["flamegraph_path"], "tsk_test/analysis/flamegraph.svg")
             self.assertEqual(result["topn_path"], "tsk_test/analysis/topn.json")
+            self.assertEqual(result["resource_timeline_path"], "tsk_test/analysis/resource_timeline.json")
             log_lines = [json.loads(line) for line in stderr.getvalue().splitlines() if line.strip()]
             self.assertEqual([item["event"] for item in log_lines], ["analyzer_started", "analyzer_completed"])
             self.assertTrue(all(item["component"] == "analyzer" for item in log_lines))
             self.assertTrue((output_dir / "flamegraph.svg").exists())
             hotspots = json.loads((output_dir / "topn.json").read_text(encoding="utf-8"))
             self.assertEqual(hotspots[0]["function"], "hot.loop")
+            timeline = json.loads((output_dir / "resource_timeline.json").read_text(encoding="utf-8"))
+            self.assertEqual(timeline["source"], "derived_from_mock_profile")
+            self.assertEqual(timeline["top_function"], "hot.loop")
+            self.assertGreater(len(timeline["points"]), 0)
 
     def test_missing_raw_artifact_logs_failure_without_stdout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -169,6 +174,10 @@ python  1000 [000] 1.0: cycles:
             self.assertTrue((output_dir / "collapsed.txt").exists())
             hotspots = json.loads((output_dir / "topn.json").read_text(encoding="utf-8"))
             self.assertEqual(hotspots[0]["function"], "burn_cpu")
+            timeline = json.loads((output_dir / "resource_timeline.json").read_text(encoding="utf-8"))
+            self.assertEqual(timeline["source"], "perf_script_samples")
+            self.assertEqual(timeline["signal"], "cpu_cycles")
+            self.assertGreater(timeline["peak_percent"], 0)
             svg = (output_dir / "flamegraph.svg").read_text(encoding="utf-8")
             self.assertIn("rect", svg)
 

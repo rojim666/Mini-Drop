@@ -27,11 +27,12 @@ type heartbeatRequest struct {
 }
 
 type taskMutationRequest struct {
-	Reason          string `json:"reason"`
-	RawArtifactPath string `json:"raw_artifact_path"`
-	FlamegraphPath  string `json:"flamegraph_path"`
-	TopNPath        string `json:"topn_path"`
-	Summary         string `json:"summary"`
+	Reason               string `json:"reason"`
+	RawArtifactPath      string `json:"raw_artifact_path"`
+	FlamegraphPath       string `json:"flamegraph_path"`
+	TopNPath             string `json:"topn_path"`
+	ResourceTimelinePath string `json:"resource_timeline_path"`
+	Summary              string `json:"summary"`
 }
 
 type continuousProfileRequest struct {
@@ -152,30 +153,50 @@ type hotspotPayload struct {
 }
 
 type attributionEvidencePayload struct {
-	Kind     string  `json:"kind"`
-	Detail   string  `json:"detail"`
-	Function string  `json:"function,omitempty"`
-	Samples  int     `json:"samples,omitempty"`
-	Percent  float64 `json:"percent,omitempty"`
+	Kind             string                   `json:"kind"`
+	Detail           string                   `json:"detail"`
+	Function         string                   `json:"function,omitempty"`
+	Samples          int                      `json:"samples,omitempty"`
+	Percent          float64                  `json:"percent,omitempty"`
+	ResourceTimeline *resourceTimelinePayload `json:"resource_timeline,omitempty"`
 }
 
 type attributionSourcePayload struct {
-	TaskID            string `json:"task_id"`
-	CollectorType     string `json:"collector_type"`
-	SampleDurationSec int    `json:"sample_duration_sec"`
-	SampleRateHz      int    `json:"sample_rate_hz"`
-	TopNPath          string `json:"topn_path"`
+	TaskID               string `json:"task_id"`
+	CollectorType        string `json:"collector_type"`
+	SampleDurationSec    int    `json:"sample_duration_sec"`
+	SampleRateHz         int    `json:"sample_rate_hz"`
+	TopNPath             string `json:"topn_path"`
+	ResourceTimelinePath string `json:"resource_timeline_path,omitempty"`
+}
+
+type resourceTimelinePointPayload struct {
+	OffsetSec float64 `json:"offset_sec"`
+	Value     float64 `json:"value"`
+	Samples   int     `json:"samples"`
+}
+
+type resourceTimelinePayload struct {
+	Source      string                         `json:"source"`
+	Signal      string                         `json:"signal"`
+	Alignment   string                         `json:"alignment"`
+	Summary     string                         `json:"summary"`
+	WindowSec   int                            `json:"window_sec"`
+	TopFunction string                         `json:"top_function"`
+	PeakPercent float64                        `json:"peak_percent"`
+	Points      []resourceTimelinePointPayload `json:"points"`
 }
 
 type attributionPayload struct {
-	Conclusion      string                       `json:"conclusion"`
-	Confidence      float64                      `json:"confidence"`
-	Evidence        []attributionEvidencePayload `json:"evidence"`
-	Recommendations []string                     `json:"recommendations"`
-	Source          attributionSourcePayload     `json:"source"`
-	ToolTrace       []attributionToolCallPayload `json:"tool_trace,omitempty"`
-	Prompt          string                       `json:"prompt,omitempty"`
-	PersistedAt     *time.Time                   `json:"persisted_at,omitempty"`
+	Conclusion       string                       `json:"conclusion"`
+	Confidence       float64                      `json:"confidence"`
+	Evidence         []attributionEvidencePayload `json:"evidence"`
+	Recommendations  []string                     `json:"recommendations"`
+	Source           attributionSourcePayload     `json:"source"`
+	ResourceTimeline *resourceTimelinePayload     `json:"resource_timeline,omitempty"`
+	ToolTrace        []attributionToolCallPayload `json:"tool_trace,omitempty"`
+	Prompt           string                       `json:"prompt,omitempty"`
+	PersistedAt      *time.Time                   `json:"persisted_at,omitempty"`
 }
 
 type attributionToolCallPayload struct {
@@ -919,13 +940,14 @@ func (s *Service) completeTask(c *gin.Context) {
 		err := tx.First(&result, "task_id = ?", task.ID).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			result = minidrop.AnalysisResult{
-				ID:             minidrop.GenerateID("res"),
-				TaskID:         task.ID,
-				FlamegraphPath: filepath.ToSlash(strings.TrimSpace(req.FlamegraphPath)),
-				TopNPath:       filepath.ToSlash(strings.TrimSpace(req.TopNPath)),
-				Summary:        strings.TrimSpace(req.Summary),
-				CreatedAt:      now,
-				UpdatedAt:      now,
+				ID:                   minidrop.GenerateID("res"),
+				TaskID:               task.ID,
+				FlamegraphPath:       filepath.ToSlash(strings.TrimSpace(req.FlamegraphPath)),
+				TopNPath:             filepath.ToSlash(strings.TrimSpace(req.TopNPath)),
+				ResourceTimelinePath: filepath.ToSlash(strings.TrimSpace(req.ResourceTimelinePath)),
+				Summary:              strings.TrimSpace(req.Summary),
+				CreatedAt:            now,
+				UpdatedAt:            now,
 			}
 			return tx.Create(&result).Error
 		}
@@ -935,6 +957,7 @@ func (s *Service) completeTask(c *gin.Context) {
 
 		result.FlamegraphPath = filepath.ToSlash(strings.TrimSpace(req.FlamegraphPath))
 		result.TopNPath = filepath.ToSlash(strings.TrimSpace(req.TopNPath))
+		result.ResourceTimelinePath = filepath.ToSlash(strings.TrimSpace(req.ResourceTimelinePath))
 		result.Summary = strings.TrimSpace(req.Summary)
 		result.UpdatedAt = now
 		return tx.Save(&result).Error
@@ -1548,23 +1571,27 @@ func (s *Service) toTaskResultPayload(c *gin.Context, task minidrop.Task, result
 	hotspots, err := mustReadTopN(absPath)
 	if err == nil {
 		payload.Hotspots = hotspots
-		payload.Attribution = s.loadOrBuildAttribution(task, result.TopNPath, hotspots)
+		payload.Attribution = s.loadOrBuildAttribution(task, result.TopNPath, result.ResourceTimelinePath, hotspots)
 	}
 
 	return payload
 }
 
-func (s *Service) loadOrBuildAttribution(task minidrop.Task, topNPath string, hotspots []hotspotPayload) *attributionPayload {
-	var record minidrop.AttributionResult
-	err := s.db.First(&record, "task_id = ?", task.ID).Error
-	if err == nil {
-		payload, decodeErr := attributionPayloadFromRecord(record)
-		if decodeErr == nil {
+func (s *Service) loadOrBuildAttribution(task minidrop.Task, topNPath string, resourceTimelinePath string, hotspots []hotspotPayload) *attributionPayload {
+	var existing minidrop.AttributionResult
+	var hasRecord bool
+	if err := s.db.First(&existing, "task_id = ?", task.ID).Error; err == nil {
+		hasRecord = true
+		payload, decodeErr := attributionPayloadFromRecord(existing)
+		if decodeErr == nil && payload.ResourceTimeline != nil {
 			return payload
 		}
-		s.log.Warn("decode persisted attribution failed", "task_id", task.ID, "error", decodeErr)
-	}
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		if decodeErr != nil {
+			s.log.Warn("decode persisted attribution failed", "task_id", task.ID, "error", decodeErr)
+		} else {
+			s.log.Info("rebuilding attribution with resource timeline", "task_id", task.ID)
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		s.log.Warn("load persisted attribution failed", "task_id", task.ID, "error", err)
 	}
 
@@ -1573,13 +1600,36 @@ func (s *Service) loadOrBuildAttribution(task minidrop.Task, topNPath string, ho
 		s.log.Warn("load attribution baselines failed", "task_id", task.ID, "error", err)
 	}
 
-	payload := buildAttributionWithBaselines(task, topNPath, hotspots, baselines)
+	var timeline *resourceTimelinePayload
+	if strings.TrimSpace(resourceTimelinePath) != "" {
+		loadedTimeline, err := mustReadResourceTimeline(s.artifactAbsPath(resourceTimelinePath))
+		if err != nil {
+			s.log.Warn("read resource timeline failed", "task_id", task.ID, "path", resourceTimelinePath, "error", err)
+		} else {
+			timeline = loadedTimeline
+		}
+	}
+
+	payload := buildAttributionWithBaselinesAndTimeline(task, topNPath, hotspots, baselines, timeline, resourceTimelinePath)
 	now := time.Now().UTC()
 	record, buildErr := attributionRecordFromPayload(task.ID, payload, now)
 	if buildErr != nil {
 		s.log.Warn("build attribution record failed", "task_id", task.ID, "error", buildErr)
 		return payload
 	}
+
+	if hasRecord {
+		record.ID = existing.ID
+		record.CreatedAt = existing.CreatedAt
+		record.UpdatedAt = now
+		if err := s.db.Save(&record).Error; err != nil {
+			s.log.Warn("persist rebuilt attribution failed", "task_id", task.ID, "error", err)
+			return payload
+		}
+		payload.PersistedAt = &record.UpdatedAt
+		return payload
+	}
+
 	if err := s.db.Create(&record).Error; err != nil {
 		s.log.Warn("persist attribution failed", "task_id", task.ID, "error", err)
 		return payload
