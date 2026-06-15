@@ -60,5 +60,6 @@ echo "Snapshot:      MINIDROP_API_PORT=${API_PORT} MINIDROP_WEB_PORT=${WEB_PORT}
 echo "Evidence:      MINIDROP_API_PORT=${API_PORT} MINIDROP_WEB_PORT=${WEB_PORT} MINIDROP_MINIO_PORT=${MINIO_PORT} bash ./scripts/demo/write-demo-evidence.sh --include-real-preflight"
 echo "Checklist:     MINIDROP_API_PORT=${API_PORT} MINIDROP_WEB_PORT=${WEB_PORT} MINIDROP_MINIO_PORT=${MINIO_PORT} MINIDROP_MINIO_CONSOLE_PORT=${MINIO_CONSOLE_PORT} bash ./scripts/demo/write-recording-checklist.sh"
 echo "Submission:    MINIDROP_API_PORT=${API_PORT} MINIDROP_WEB_PORT=${WEB_PORT} MINIDROP_MINIO_CONSOLE_PORT=${MINIO_CONSOLE_PORT} bash ./scripts/demo/write-submission-notes.sh"
+echo "Screenshots:   MINIDROP_WEB_PORT=${WEB_PORT} MINIDROP_MINIO_CONSOLE_PORT=${MINIO_CONSOLE_PORT} bash ./scripts/demo/capture-submission-artifacts.sh"
 echo "Final gate:    bash ./scripts/demo/final-preflight.sh --api-port ${API_PORT} --web-port ${WEB_PORT} --minio-port ${MINIO_PORT} --minio-console-port ${MINIO_CONSOLE_PORT} --include-real-preflight"
 echo "Stop command:  bash ./scripts/demo/stop-compose.sh"

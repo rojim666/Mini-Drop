@@ -10,6 +10,7 @@ param(
     [string]$AgentId = $(if ($env:MINIDROP_TARGET_AGENT_ID) { $env:MINIDROP_TARGET_AGENT_ID } else { "agt_compose" }),
     [switch]$IncludeRealPreflight,
     [string]$RealCollectors = $(if ($env:MINIDROP_REAL_COLLECTORS) { $env:MINIDROP_REAL_COLLECTORS } else { "perf,ebpf-syscall,py-spy" }),
+    [switch]$SkipFailureTask,
     [switch]$SkipLive,
     [switch]$SkipTests
 )
@@ -50,6 +51,10 @@ if ($SeedTasks) {
 
 if ($IncludeRealPreflight) {
     $arguments += "--include-real-preflight"
+}
+
+if ($SkipFailureTask) {
+    $arguments += "--skip-failure-task"
 }
 
 if ($SkipLive) {

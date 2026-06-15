@@ -108,6 +108,7 @@ try {
     Write-Host "Evidence:      .\scripts\demo\write-demo-evidence.ps1 -ApiPort $ApiPort -WebPort $WebPort -MinioPort $MinioPort -IncludeRealPreflight"
     Write-Host "Checklist:     .\scripts\demo\write-recording-checklist.ps1 -ApiPort $ApiPort -WebPort $WebPort -MinioPort $MinioPort -MinioConsolePort $MinioConsolePort"
     Write-Host "Submission:    .\scripts\demo\write-submission-notes.ps1 -ApiPort $ApiPort -WebPort $WebPort -MinioConsolePort $MinioConsolePort"
+    Write-Host "Screenshots:   .\scripts\demo\capture-submission-artifacts.ps1 -WebPort $WebPort -MinioConsolePort $MinioConsolePort"
     Write-Host "Final gate:    .\scripts\demo\final-preflight.ps1 -ApiPort $ApiPort -WebPort $WebPort -MinioPort $MinioPort -MinioConsolePort $MinioConsolePort -IncludeRealPreflight"
     Write-Host "Stop command:  .\scripts\demo\stop-compose.ps1"
 } finally {

@@ -33,6 +33,7 @@ PYTHON_SYNTAX_FILES = [
     "scripts/demo/write_demo_evidence.py",
     "scripts/demo/write_recording_checklist.py",
     "scripts/demo/write_submission_notes.py",
+    "scripts/demo/capture_submission_artifacts.py",
     "scripts/demo/run_final_preflight.py",
     "scripts/demo/check_coverage.py",
     "scripts/demo/demo_diagnostics.py",
@@ -161,6 +162,27 @@ def seed_acceptance_tasks(count: int, target_pid: int, agent_id: str, env: dict[
         code=code,
         output="\n\n".join(outputs),
         elapsed_sec=time.monotonic() - started,
+    )
+
+
+def seed_failure_task(agent_id: str, env: dict[str, str]) -> StepResult:
+    return run_command(
+        "Seed failure-path task",
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "demo" / "smoke_compose.py"),
+            "--pid",
+            "999999",
+            "--agent-id",
+            agent_id,
+            "--expect-status",
+            "FAILED",
+            "--expect-reason-contains",
+            "target pid not found",
+        ],
+        required=True,
+        env=env,
+        timeout=120,
     )
 
 
@@ -318,6 +340,18 @@ def main() -> int:
     )
     parser.add_argument("--seed-tasks", action="store_true", help="Create compose smoke tasks before acceptance snapshot.")
     parser.add_argument(
+        "--seed-failure-task",
+        action="store_true",
+        default=True,
+        help="Create a PID-not-found task so screenshot evidence includes the failure path.",
+    )
+    parser.add_argument(
+        "--skip-failure-task",
+        action="store_false",
+        dest="seed_failure_task",
+        help="Skip creation of the PID-not-found task during the live preflight.",
+    )
+    parser.add_argument(
         "--seed-task-count",
         type=int,
         default=int(os.environ.get("MINIDROP_ACCEPTANCE_SEED_TASKS", "2")),
@@ -443,6 +477,8 @@ def main() -> int:
         )
         if args.seed_tasks:
             results.append(seed_acceptance_tasks(args.seed_task_count, args.target_pid, args.agent_id, env))
+        if args.seed_failure_task:
+            results.append(seed_failure_task(args.agent_id, env))
         results.append(
             run_command(
                 "Acceptance snapshot",
@@ -506,6 +542,31 @@ def main() -> int:
             timeout=60,
         )
     )
+    if not args.skip_live:
+        results.append(
+            run_command(
+                "Submission screenshots",
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "demo" / "capture_submission_artifacts.py"),
+                    "--web-base",
+                    f"http://localhost:{args.web_port}",
+                    "--output-dir",
+                    str(ROOT / "artifacts" / "submission-screenshots"),
+                    "--minio-console-base",
+                    f"http://localhost:{args.minio_console_port}",
+                    "--evidence-path",
+                    str(ROOT / "artifacts" / "demo-evidence.md"),
+                    "--coverage-path",
+                    str(ROOT / "artifacts" / "coverage-report.md"),
+                    "--browser-channel",
+                    "auto",
+                ],
+                required=True,
+                env=env,
+                timeout=300,
+            )
+        )
 
     output_path = Path(args.output)
     if not output_path.is_absolute():

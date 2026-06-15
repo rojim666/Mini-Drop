@@ -14,6 +14,7 @@ TARGET_PID="${MINIDROP_TARGET_PID:-1}"
 TARGET_AGENT_ID="${MINIDROP_TARGET_AGENT_ID:-agt_compose}"
 INCLUDE_REAL_PREFLIGHT=0
 REAL_COLLECTORS="${MINIDROP_REAL_COLLECTORS:-perf,ebpf-syscall,py-spy}"
+SKIP_FAILURE_TASK=0
 SKIP_LIVE=0
 SKIP_TESTS=0
 
@@ -63,6 +64,10 @@ while [[ $# -gt 0 ]]; do
       REAL_COLLECTORS="$2"
       shift 2
       ;;
+    --skip-failure-task)
+      SKIP_FAILURE_TASK=1
+      shift
+      ;;
     --skip-live)
       SKIP_LIVE=1
       shift
@@ -97,6 +102,10 @@ fi
 
 if [[ "$INCLUDE_REAL_PREFLIGHT" == "1" ]]; then
   args+=(--include-real-preflight)
+fi
+
+if [[ "$SKIP_FAILURE_TASK" == "1" ]]; then
+  args+=(--skip-failure-task)
 fi
 
 if [[ "$SKIP_LIVE" == "1" ]]; then
