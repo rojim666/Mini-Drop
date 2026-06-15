@@ -645,7 +645,6 @@ function HomePage({
 }) {
   const comparableTasks = tasks.filter((task) => task.status === "DONE");
   const failedTasks = tasks.filter((task) => task.status === "FAILED");
-  const signedTaskCount = comparableTasks.filter((task) => Boolean(task.result?.flamegraph_url && task.result?.topn_url)).length;
   return (
     <div className="page-stack">
       <section className="content-grid">
@@ -682,27 +681,6 @@ function HomePage({
       </section>
 
       <section className="delivery-grid">
-        <div className="console-card delivery-card delivery-main">
-          <CardHeader title="录制准备" />
-          <div className="delivery-scoreboard">
-            <div>
-              <span>最终预检</span>
-              <strong>OK</strong>
-              <p>final-preflight 覆盖测试、验收快照、证据文档和截图。</p>
-            </div>
-            <div>
-              <span>截图清单</span>
-              <strong>10 张</strong>
-              <p>首页、机器、任务详情、文件、对比、计划、失败路径、证据、覆盖率、MinIO。</p>
-            </div>
-            <div>
-              <span>MinIO 签名结果</span>
-              <strong>{signedTaskCount} 个</strong>
-              <p>Compose 路径返回临时签名 URL，保留对象存储交付契约。</p>
-            </div>
-          </div>
-        </div>
-
         <div className="console-card delivery-card">
           <CardHeader title="真实采集器状态" />
           <div className="collector-readiness-list">
@@ -720,7 +698,7 @@ function HomePage({
             <code>make smoke-real COLLECTOR_TYPE=perf</code>
           </div>
           <div className="delivery-note">
-            当前 Windows Compose 演示可录制；真实 smoke 需要在 WSL2 / Linux 装好采集工具后执行。
+            当前 Windows Compose 演示可直接使用；真实 smoke 需要在 WSL2 / Linux 装好采集工具后执行。
           </div>
         </div>
 

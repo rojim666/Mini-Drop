@@ -1079,7 +1079,7 @@ button:disabled {
 
 .delivery-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.32fr) minmax(260px, 0.68fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   align-items: stretch;
 }
@@ -1088,31 +1088,6 @@ button:disabled {
   overflow: hidden;
 }
 
-.delivery-main {
-  grid-row: span 2;
-}
-
-.delivery-scoreboard {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  min-height: 172px;
-}
-
-.delivery-scoreboard > div {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  padding: 18px 16px;
-  border-right: 1px solid var(--tc-border-soft);
-  background:
-    linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-}
-
-.delivery-scoreboard > div:last-child {
-  border-right: 0;
-}
-
-.delivery-scoreboard span,
 .delivery-note,
 .failure-evidence span,
 .readiness-row p {
@@ -1120,13 +1095,6 @@ button:disabled {
   font-size: 12px;
 }
 
-.delivery-scoreboard strong {
-  color: var(--tc-text-strong);
-  font-size: 28px;
-  font-weight: 500;
-}
-
-.delivery-scoreboard p,
 .failure-evidence p {
   margin: 0;
   color: var(--tc-text-soft);
@@ -2467,7 +2435,6 @@ button:disabled {
 
   .hero-metrics,
   .narrative-grid,
-  .delivery-scoreboard,
   .form-line,
   .schedule-form-head,
   .schedule-overview-strip,
@@ -2556,15 +2523,6 @@ button:disabled {
   }
 
   .narrative-grid > div:last-child {
-    border-bottom: 0;
-  }
-
-  .delivery-scoreboard > div {
-    border-right: 0;
-    border-bottom: 1px solid var(--tc-border-soft);
-  }
-
-  .delivery-scoreboard > div:last-child {
     border-bottom: 0;
   }
 
