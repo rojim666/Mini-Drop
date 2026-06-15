@@ -15,6 +15,46 @@ import (
 	"mini-drop/internal/minidrop"
 )
 
+func TestAuthProtectsConsoleRoutes(t *testing.T) {
+	svc := newTestServiceWithConfig(t, Config{
+		AuthEnabled:     true,
+		AuthUsername:    "demo",
+		AuthPassword:    "minidrop",
+		AuthTokenSecret: "test-secret",
+		AuthSessionTTL:  time.Hour,
+	})
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodGet, "/api/v1/agents", nil, http.StatusUnauthorized)
+
+	performJSON(t, router, http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"username": "demo",
+		"password": "wrong",
+	}, http.StatusUnauthorized)
+
+	loginResp := performJSON(t, router, http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"username": "demo",
+		"password": "minidrop",
+		"tenant":   "local-demo",
+		"region":   "compose",
+	}, http.StatusOK)
+	token := loginResp["token"].(string)
+	if token == "" {
+		t.Fatal("expected login token")
+	}
+
+	authorized := performJSONWithHeaders(t, router, http.MethodGet, "/api/v1/auth/me", nil, http.StatusOK, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+	user := authorized["user"].(map[string]any)
+	if got := user["username"].(string); got != "demo" {
+		t.Fatalf("expected demo user, got %s", got)
+	}
+	if got := user["region"].(string); got != "compose" {
+		t.Fatalf("expected compose region, got %s", got)
+	}
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 	ctx := context.Background()
@@ -25,6 +65,7 @@ func newTestService(t *testing.T) *Service {
 		DBPath:               filepath.Join(dir, "data", "mini-drop.db"),
 		ArtifactDir:          filepath.Join(dir, "artifacts"),
 		AllowedOrigin:        "http://127.0.0.1:5173",
+		AuthEnabled:          false,
 		OfflineAfter:         30 * time.Second,
 		OfflineCheckInterval: time.Hour,
 	})
@@ -53,6 +94,9 @@ func newTestServiceWithConfig(t *testing.T, cfg Config) *Service {
 	}
 	if cfg.AllowedOrigin == "" {
 		cfg.AllowedOrigin = "http://127.0.0.1:5173"
+	}
+	if !cfg.AuthEnabled && cfg.AuthUsername == "" && cfg.AuthPassword == "" && cfg.AuthTokenSecret == "" {
+		cfg.AuthEnabled = false
 	}
 	if cfg.OfflineAfter == 0 {
 		cfg.OfflineAfter = 30 * time.Second
@@ -1365,6 +1409,10 @@ func writeTestResourceTimeline(t *testing.T, svc *Service, taskID string, timeli
 }
 
 func performJSON(t *testing.T, router http.Handler, method, path string, body any, expected int) map[string]any {
+	return performJSONWithHeaders(t, router, method, path, body, expected, nil)
+}
+
+func performJSONWithHeaders(t *testing.T, router http.Handler, method, path string, body any, expected int, headers map[string]string) map[string]any {
 	t.Helper()
 
 	var payload bytes.Buffer
@@ -1376,6 +1424,9 @@ func performJSON(t *testing.T, router http.Handler, method, path string, body an
 
 	req := httptest.NewRequest(method, path, &payload)
 	req.Header.Set("Content-Type", "application/json")
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != expected {

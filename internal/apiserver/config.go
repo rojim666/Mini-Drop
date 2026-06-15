@@ -26,6 +26,11 @@ type Config struct {
 	MinIOUseSSL            bool
 	MinIOPresignTTL        time.Duration
 	AllowedOrigin          string
+	AuthEnabled            bool
+	AuthUsername           string
+	AuthPassword           string
+	AuthTokenSecret        string
+	AuthSessionTTL         time.Duration
 	AgentAllowlist         []string
 	AIEnabled              bool
 	AIBaseURL              string
@@ -64,6 +69,11 @@ func LoadConfigFromEnv() (Config, error) {
 		MinIOUseSSL:            boolFromEnv("MINIDROP_MINIO_USE_SSL", false),
 		MinIOPresignTTL:        durationFromEnv("MINIDROP_MINIO_PRESIGN_TTL_SEC", 900),
 		AllowedOrigin:          getenv("MINIDROP_ALLOWED_ORIGIN", "http://127.0.0.1:5173"),
+		AuthEnabled:            boolFromEnv("MINIDROP_AUTH_ENABLED", true),
+		AuthUsername:           getenv("MINIDROP_AUTH_USERNAME", "demo"),
+		AuthPassword:           getenv("MINIDROP_AUTH_PASSWORD", "minidrop"),
+		AuthTokenSecret:        getenv("MINIDROP_AUTH_TOKEN_SECRET", "mini-drop-demo-secret"),
+		AuthSessionTTL:         durationFromEnv("MINIDROP_AUTH_SESSION_TTL_SEC", 8*60*60),
 		AgentAllowlist:         splitCSV(getenv("MINIDROP_AGENT_ALLOWLIST", "")),
 		AIEnabled:              boolFromEnv("MINIDROP_AI_ENABLED", os.Getenv("MINIDROP_AI_API_KEY") != ""),
 		AIBaseURL:              getenv("MINIDROP_AI_BASE_URL", "https://api.openai.com/v1"),
@@ -101,6 +111,18 @@ func (cfg Config) withDefaults() Config {
 	}
 	if cfg.MinIOPresignTTL <= 0 {
 		cfg.MinIOPresignTTL = 15 * time.Minute
+	}
+	if cfg.AuthUsername == "" {
+		cfg.AuthUsername = "demo"
+	}
+	if cfg.AuthPassword == "" {
+		cfg.AuthPassword = "minidrop"
+	}
+	if cfg.AuthTokenSecret == "" {
+		cfg.AuthTokenSecret = "mini-drop-demo-secret"
+	}
+	if cfg.AuthSessionTTL <= 0 {
+		cfg.AuthSessionTTL = 8 * time.Hour
 	}
 	if cfg.AIBaseURL == "" {
 		cfg.AIBaseURL = "https://api.openai.com/v1"
