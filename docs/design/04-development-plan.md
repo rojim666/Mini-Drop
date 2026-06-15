@@ -2,154 +2,260 @@
 
 ## 开发节奏
 
-这不是先写一堆模块再联调的项目。正确节奏是：
+Mini-Drop 采用文档驱动和垂直切片开发。每个阶段都要保持一个可运行 demo，而不是先堆模块再最后联调。
 
-1. 先定义接口和数据结构。
-2. 写最薄的端到端链路。
-3. 每天保持一个可运行 demo。
-4. 扩展能力只在主链路稳定后加。
+核心节奏：
 
-## 第一阶段：文档和骨架
+1. 先固定接口、状态机和 artifact 契约。
+2. 先跑通最小端到端链路。
+3. 再接真实采集器和对象存储。
+4. 扩展能力只在主链路稳定后加入。
+5. 每个失败路径都必须有可解释 reason 和可演示证据。
 
-目标：
-
-- 完成 docs。
-- 确定 MVP 范围。
-- 确定接口和数据表。
-- 搭建仓库目录。
-
-验收：
-
-- README 能说明项目是什么。
-- 设计文档能指导开发。
-- 后续每个功能都能找到对应文档依据。
-
-## 第二阶段：最小主链路
+## 阶段 1：文档和骨架
 
 目标：
 
-`Web -> API -> Agent -> mock collector -> Analyzer -> Web`
+- 整理题目、复刻指南、MVP 范围和架构图。
+- 建立 `apps/api-server`、`apps/agent`、`apps/analyzer`、`apps/web`、`deploy`、`scripts/demo`。
+- 固定数据模型、状态机和本地 artifact 目录。
 
-先不用真实 `perf`，用 mock artifact 跑通流程。
+当前状态：已完成。
 
-验收：
+验收证据：
 
-- Web 可以创建任务。
-- Server 可以保存任务。
-- Agent 可以拿到任务。
-- Analyzer 可以生成一个假 SVG。
-- Web 可以展示结果。
+- README 可说明项目目标和启动方式。
+- `docs/design` 下有架构、状态机、backlog、下一步计划。
+- 根目录 Makefile 和 PowerShell / Bash demo 脚本已存在。
 
-## 第三阶段：接入 perf
-
-目标：
-
-用真实 `perf` 替换 mock collector。
-
-验收：
-
-- 输入真实 PID。
-- Agent 生成真实采集产物。
-- Analyzer 生成火焰图 SVG。
-- Web 能展示火焰图。
-
-## 第四阶段：状态机、心跳、审计
+## 阶段 2：Mock 主链路
 
 目标：
 
-- 实现任务状态机。
-- 实现 Agent 心跳。
-- 实现离线判定。
-- 实现审计日志。
+```text
+Web -> API Server -> Agent -> mock collector -> Analyzer -> Web
+```
 
-验收：
+实现内容：
 
-- 任务每次状态迁移都落库。
-- Web 可见状态历史。
-- 停掉 Agent 后 30 秒内显示离线。
-- Agent 恢复后写恢复审计日志。
+- Web 创建采样任务。
+- API 持久化任务和状态事件。
+- Agent 心跳、领取任务、推进状态。
+- Mock collector 写 raw artifact。
+- Analyzer 生成 `flamegraph.svg` 和 `topn.json`。
+- Web 轮询任务状态并展示结果。
 
-## 第五阶段：eBPF 扩展
+当前状态：已完成。
 
-目标：
+验收证据：
 
-实现一个真实可演示的 eBPF 采集器。
+- `scripts/demo/start-local.ps1` 可在 Windows 本地启动 mock demo。
+- `scripts/demo/smoke_e2e.py` 可创建任务并等待 `DONE`。
+- Web 可以展示 Agent、任务列表、任务详情、火焰图和 TopN。
 
-推荐路径：
-
-- 先用 `bpftrace`。
-- 采集 block IO 或调度延迟。
-- 用 `dd` / `fio` / `stress-ng` 制造变化。
-
-验收：
-
-- 演示视频中能现场制造异常。
-- Web 上能看到 eBPF 数据变化。
-
-## 第六阶段：用户态语言级采集器
+## 阶段 3：真实 perf 采集器
 
 目标：
 
-接入 `py-spy` 或 `pprof HTTP`。
+在 Linux / WSL2 Ubuntu 中接入真实 `perf record`，保持 Web/API/Artifact 契约不变。
 
-验收：
+实现内容：
 
-- 有一个 demo Python 或 Go 服务。
-- 采集器能生成不同于 perf 的结果。
-- Web 上有独立展示形态。
+- `collector_type=perf` 走真实 Linux collector。
+- 非 Linux 环境直接失败并返回清晰 reason。
+- 检查 PID、`perf` 命令、`perf_event_paranoid`。
+- 执行 `perf record -F <rate> -g -p <pid> -o perf.data -- sleep <duration>`。
+- Analyzer 执行 `perf script`，生成 collapsed stacks、火焰图和 TopN。
+- 支持可选标准 FlameGraph Perl 工具，失败时回退到内置解析器。
 
-## 第七阶段：Continuous Profiling
+当前状态：代码已完成，仍需要在具备权限的 WSL2 / Linux 环境做最终 smoke 验证。
+
+验收命令：
+
+```bash
+make real-check
+COLLECTOR_TYPE=perf bash ./scripts/demo/start-local.sh
+make smoke-real COLLECTOR_TYPE=perf
+```
+
+## 阶段 4：状态机、心跳和审计
 
 目标：
 
-做最小版持续 profiling。
+让演示不仅“能跑”，还可以解释每次状态变化和失败原因。
 
-验收：
+实现内容：
 
-- Agent 定时低频采样。
-- 结果按时间窗口保存。
-- Web 能选择一个固定 5 分钟窗口查看。
+- 任务状态迁移 helper。
+- `task_status_events` 全量记录。
+- Agent 5 秒心跳。
+- Server 离线扫描。
+- Agent 离线和恢复写 `audit_logs`。
+- PID 不存在、Agent 离线、采集器缺失等异常路径都有 reason。
 
-## 第八阶段：智能归因
+当前状态：已完成。
+
+验收命令：
+
+```bash
+make smoke-demo-fail
+make smoke-demo-offline
+go test ./apps/api-server ./apps/agent ./internal/...
+```
+
+## 阶段 5：交付底座
 
 目标：
 
-做一个可验证的 LLM 归因小闭环。
+满足 `docker compose up` 一键启动和对象存储下载的交付基线。
 
-验收：
+实现内容：
 
-- LLM 输入来自结构化工具结果。
-- 输出包含证据。
-- 至少有 3 个评测样例。
+- Compose 启动 PostgreSQL、MinIO、API、Agent、Web、demo target。
+- API 支持 PostgreSQL。
+- API 支持 MinIO 上传和签名 URL。
+- PowerShell 和 Bash 脚本分别覆盖 Windows / Linux 启动路径。
+- README 和 runbook 说明端口、账号、PID、常见失败。
 
-## 两周建议排期
+当前状态：已完成 Windows compose mock 路径。
 
-| Day | 目标 |
-|---|---|
-| D1 | 文档、目录、数据表、API 草案 |
-| D2 | API Server 骨架、DB migrate、Web 骨架 |
-| D3 | Agent 心跳 mock、任务创建 mock |
-| D4 | mock 端到端链路跑通 |
-| D5 | 接入真实 perf |
-| D6 | Analyzer 生成火焰图 |
-| D7 | Web 展示火焰图，第一次端到端验收 |
-| D8 | 状态机和状态历史 |
-| D9 | Agent 离线/恢复和审计日志 |
-| D10 | 异常路径和集成测试 |
-| D11 | eBPF 采集器 |
-| D12 | Continuous Profiling 最小版 |
-| D13 | 智能归因或用户态采集器 |
-| D14 | 文档、README、演示脚本、录屏 |
+验收命令：
+
+```powershell
+.\scripts\demo\start-compose.ps1
+python scripts\demo\smoke_compose.py --pid 1 --agent-id agt_compose --expect-minio-url
+```
+
+## 阶段 6：eBPF 扩展
+
+目标：
+
+实现一个真实可演示的内核态采集器。
+
+实现内容：
+
+- `collector_type=ebpf-syscall`。
+- Linux 下使用 `bpftrace` 统计目标 PID 的 syscall 分布。
+- Demo workload 使用 `dd` 循环制造明显 syscall 变化。
+- Analyzer 将 syscall 分布转成 TopN 和 SVG。
+- Web 增加 `eBPF 分布` 展示。
+
+当前状态：代码已完成，仍需要具备 `bpftrace` 和 tracefs 权限的 WSL2 / Linux 环境最终验证。
+
+验收命令：
+
+```bash
+python3 scripts/demo/check_ebpf_env.py --pid <target-pid>
+COLLECTOR_TYPE=ebpf-syscall bash ./scripts/demo/start-local.sh
+make smoke-real COLLECTOR_TYPE=ebpf-syscall
+```
+
+## 阶段 7：用户态语言采集器
+
+目标：
+
+实现一个与 `perf` 语义不同的用户态语言采集器。
+
+实现内容：
+
+- `collector_type=py-spy`。
+- 使用 `py-spy record --format raw` 采集 Python 进程。
+- Analyzer 解析 Python 栈样本。
+- Web 增加 `Python 栈` 展示。
+
+当前状态：代码已完成，仍需要安装 `py-spy` 并在 Linux / WSL2 上验证 attach 权限。
+
+验收命令：
+
+```bash
+python3 scripts/demo/check_pyspy_env.py --pid <python-target-pid>
+COLLECTOR_TYPE=py-spy bash ./scripts/demo/start-local.sh
+make smoke-real COLLECTOR_TYPE=py-spy
+```
+
+## 阶段 8：Continuous Profiling
+
+目标：
+
+实现最小持续 profiling：固定窗口、低频采样、结果可回溯。
+
+实现内容：
+
+- Web `计划任务` 页面创建 continuous profile。
+- API 创建 profile 和 window。
+- 每个到期 window materialize 为普通 task。
+- 结果复用原有 Agent、Analyzer、火焰图、TopN 和归因展示。
+
+当前状态：已完成最小版。
+
+下一步增强：
+
+- 增加更完整的调度策略。
+- 增加窗口聚合和 baseline 对比。
+- 支持按时间轴浏览多个窗口。
+
+## 阶段 9：智能归因
+
+目标：
+
+做一个可验证、可审计的小闭环，而不是直接让 LLM 编结论。
+
+实现内容：
+
+- Analyzer / API 读取 TopN。
+- 匹配热点规则。
+- 与 baseline 样例对比。
+- 输出 conclusion、confidence、evidence、recommendations、source、tool trace。
+- Web `归因建议` tab 展示完整证据链。
+
+当前状态：规则驱动版本已完成。
+
+下一步增强：
+
+- 接入真实资源时间线。
+- 接入远程 LLM，但只允许它调用结构化工具。
+- 扩充评测样例和评分报告。
+
+## 当前下一步
+
+当前项目主线已经从“实现功能”进入“交付验证和演示收口”：
+
+1. 在 WSL2 / Linux 中安装真实采集器依赖，运行 `make real-check`。
+2. 跑通至少 `perf` 的真实 smoke：`make smoke-real COLLECTOR_TYPE=perf`。
+3. 尽量跑通 `ebpf-syscall` 和 `py-spy` 的真实 smoke。
+4. 继续打磨 Web 控制台风格和演示路径。
+5. 补最终演示脚本、截图和提交说明。
+
+## 两周交付排期
+
+| Day | 目标 | 当前状态 |
+|---|---|---|
+| D1 | 文档、目录、数据表、API 草案 | 完成 |
+| D2 | API Server、DB migrate、Web 骨架 | 完成 |
+| D3 | Agent 心跳和任务创建 mock | 完成 |
+| D4 | mock 端到端链路 | 完成 |
+| D5 | 接入真实 perf | 代码完成，待 Linux 验证 |
+| D6 | Analyzer 生成火焰图 | 完成 |
+| D7 | Web 展示火焰图和 TopN | 完成 |
+| D8 | 状态机和状态历史 | 完成 |
+| D9 | Agent 离线/恢复和审计日志 | 完成 |
+| D10 | 异常路径和集成测试 | 完成 |
+| D11 | eBPF 采集器 | 代码完成，待 Linux 验证 |
+| D12 | Continuous Profiling 最小版 | 完成 |
+| D13 | 用户态采集器和智能归因 | 完成最小版 |
+| D14 | README、runbook、演示脚本、录屏准备 | 进行中 |
 
 ## Commit 规则
 
-每个 commit 要解释“为什么”：
+每个 commit 要解释“为什么”，避免没有信息量的提交。
 
-- `docs: define MVP scope and architecture`
-- `api: persist task status events`
-- `agent: add heartbeat loop for offline detection`
-- `analyzer: generate flamegraph svg from perf output`
-- `web: show task status history`
+推荐：
+
+- `docs: align demo runbook with compose scripts`
+- `agent: add linux perf collector preflight`
+- `analyzer: parse perf script into collapsed stacks`
+- `web: show attribution evidence in task detail`
+- `deploy: serve artifacts through minio signed urls`
 
 避免：
 
@@ -157,21 +263,3 @@
 - `fix`
 - `wip`
 - `change`
-
-## 当前下一步
-
-在代码层面，下一步应该创建项目骨架：
-
-```text
-apps/
-  api-server/
-  web/
-  agent/
-  analyzer/
-deploy/
-  docker-compose.yml
-scripts/
-  demo/
-```
-
-然后先实现 mock 端到端链路。

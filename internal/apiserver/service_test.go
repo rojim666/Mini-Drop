@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,6 +100,58 @@ func TestCreateTaskValidation(t *testing.T) {
 	}
 }
 
+func TestCreateTaskValidationAllowsPerfCollector(t *testing.T) {
+	input := minidrop.CreateTaskInput{
+		TargetPID:         1234,
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "perf",
+	}
+	input.Normalize()
+	if err := minidrop.ValidateCreateTaskInput(input); err != nil {
+		t.Fatalf("expected perf collector to be accepted: %v", err)
+	}
+}
+
+func TestCreateTaskValidationAllowsEBPFSyscallCollector(t *testing.T) {
+	input := minidrop.CreateTaskInput{
+		TargetPID:         1234,
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "ebpf-syscall",
+	}
+	input.Normalize()
+	if err := minidrop.ValidateCreateTaskInput(input); err != nil {
+		t.Fatalf("expected ebpf-syscall collector to be accepted: %v", err)
+	}
+}
+
+func TestCreateTaskValidationAllowsPySpyCollector(t *testing.T) {
+	input := minidrop.CreateTaskInput{
+		TargetPID:         1234,
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "py-spy",
+	}
+	input.Normalize()
+	if err := minidrop.ValidateCreateTaskInput(input); err != nil {
+		t.Fatalf("expected py-spy collector to be accepted: %v", err)
+	}
+}
+
+func TestCreateTaskValidationRejectsUnsupportedCollector(t *testing.T) {
+	input := minidrop.CreateTaskInput{
+		TargetPID:         1234,
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "ebpf",
+	}
+	input.Normalize()
+	if err := minidrop.ValidateCreateTaskInput(input); err == nil {
+		t.Fatal("expected unsupported collector to be rejected")
+	}
+}
+
 func TestOfflineAuditLifecycle(t *testing.T) {
 	svc := newTestService(t)
 	router := svc.Router()
@@ -132,12 +186,337 @@ func TestOfflineAuditLifecycle(t *testing.T) {
 	}
 }
 
+func TestOfflineAgentFailsActiveTasks(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "agt_offline_tasks",
+		"hostname": "demo-host",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusOK)
+
+	createResp := performJSON(t, router, http.MethodPost, "/api/v1/tasks", map[string]any{
+		"target_pid":          1234,
+		"target_agent_id":     "agt_offline_tasks",
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+	}, http.StatusCreated)
+	taskID := createResp["task"].(map[string]any)["id"].(string)
+
+	oldHeartbeat := time.Now().UTC().Add(-35 * time.Second)
+	if err := svc.DB().Model(&minidrop.Agent{}).Where("id = ?", "agt_offline_tasks").Update("last_heartbeat_at", oldHeartbeat).Error; err != nil {
+		t.Fatalf("age heartbeat: %v", err)
+	}
+
+	if err := svc.reconcileOfflineAgents(time.Now().UTC()); err != nil {
+		t.Fatalf("reconcile offline agents: %v", err)
+	}
+
+	taskResp := performJSON(t, router, http.MethodGet, "/api/v1/tasks/"+taskID, nil, http.StatusOK)
+	task := taskResp["task"].(map[string]any)
+	if got := task["status"].(string); got != string(minidrop.TaskStatusFailed) {
+		t.Fatalf("expected FAILED after agent offline, got %s", got)
+	}
+	if got := task["status_reason"].(string); got != "target agent offline" {
+		t.Fatalf("expected offline reason, got %q", got)
+	}
+
+	events := task["events"].([]any)
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+}
+
+func TestTaskResultsIncludeRuleAttribution(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "agt_attr",
+		"hostname": "demo-host",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusOK)
+
+	createResp := performJSON(t, router, http.MethodPost, "/api/v1/tasks", map[string]any{
+		"target_pid":          5678,
+		"target_agent_id":     "agt_attr",
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+	}, http.StatusCreated)
+	taskID := createResp["task"].(map[string]any)["id"].(string)
+
+	performJSON(t, router, http.MethodGet, "/api/v1/internal/tasks/claim?agent_id=agt_attr", nil, http.StatusOK)
+	performJSON(t, router, http.MethodPost, "/api/v1/internal/tasks/"+taskID+"/uploading", map[string]any{
+		"raw_artifact_path": taskID + "/raw/mock.perf.data.json",
+	}, http.StatusOK)
+
+	topNRelPath := filepath.ToSlash(filepath.Join(taskID, "analysis", "topn.json"))
+	topNAbsPath := filepath.Join(svc.cfg.ArtifactDir, filepath.FromSlash(topNRelPath))
+	if err := os.MkdirAll(filepath.Dir(topNAbsPath), 0o755); err != nil {
+		t.Fatalf("create topn dir: %v", err)
+	}
+	topN := []hotspotPayload{
+		{Function: "main.expensiveLoop", Samples: 80, Percent: 64.0},
+		{Function: "runtime.mallocgc", Samples: 20, Percent: 16.0},
+	}
+	data, err := json.Marshal(topN)
+	if err != nil {
+		t.Fatalf("marshal topn: %v", err)
+	}
+	if err := os.WriteFile(topNAbsPath, data, 0o644); err != nil {
+		t.Fatalf("write topn: %v", err)
+	}
+
+	performJSON(t, router, http.MethodPost, "/api/v1/internal/tasks/"+taskID+"/complete", map[string]any{
+		"raw_artifact_path": taskID + "/raw/mock.perf.data.json",
+		"flamegraph_path":   filepath.ToSlash(filepath.Join(taskID, "analysis", "flamegraph.svg")),
+		"topn_path":         topNRelPath,
+		"summary":           "Synthetic CPU profile ready",
+	}, http.StatusOK)
+
+	resp := performJSON(t, router, http.MethodGet, "/api/v1/tasks/"+taskID+"/results", nil, http.StatusOK)
+	result := resp["result"].(map[string]any)
+	attribution := result["attribution"].(map[string]any)
+	if got := attribution["conclusion"].(string); !strings.Contains(got, "单个热点") {
+		t.Fatalf("expected single hotspot conclusion, got %q", got)
+	}
+	source := attribution["source"].(map[string]any)
+	if got := source["task_id"].(string); got != taskID {
+		t.Fatalf("expected source task_id %s, got %s", taskID, got)
+	}
+	evidence := attribution["evidence"].([]any)
+	if len(evidence) < 3 {
+		t.Fatalf("expected attribution evidence, got %d items", len(evidence))
+	}
+	trace := attribution["tool_trace"].([]any)
+	if len(trace) < 3 {
+		t.Fatalf("expected attribution tool trace, got %d items", len(trace))
+	}
+	if prompt := attribution["prompt"].(string); !strings.Contains(prompt, taskID) {
+		t.Fatalf("expected prompt to reference task id, got %q", prompt)
+	}
+
+	var persisted minidrop.AttributionResult
+	if err := svc.DB().First(&persisted, "task_id = ?", taskID).Error; err != nil {
+		t.Fatalf("expected persisted attribution result: %v", err)
+	}
+
+	secondResp := performJSON(t, router, http.MethodGet, "/api/v1/tasks/"+taskID+"/results", nil, http.StatusOK)
+	secondResult := secondResp["result"].(map[string]any)
+	secondAttribution := secondResult["attribution"].(map[string]any)
+	if _, ok := secondAttribution["persisted_at"].(string); !ok {
+		t.Fatalf("expected second attribution response to include persisted_at: %+v", secondAttribution)
+	}
+}
+
+func TestBuildAttributionRuleSamples(t *testing.T) {
+	task := minidrop.Task{
+		ID:                "tsk_eval",
+		CollectorType:     "perf",
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+	}
+
+	tests := []struct {
+		name       string
+		hotspots   []hotspotPayload
+		wantPhrase string
+	}{
+		{
+			name: "single hotspot",
+			hotspots: []hotspotPayload{
+				{Function: "main.spinCPU", Samples: 60, Percent: 60},
+				{Function: "runtime.nanotime", Samples: 10, Percent: 10},
+			},
+			wantPhrase: "单个热点",
+		},
+		{
+			name: "runtime scheduling",
+			hotspots: []hotspotPayload{
+				{Function: "runtime.schedule", Samples: 25, Percent: 35},
+				{Function: "runtime.park_m", Samples: 15, Percent: 21},
+			},
+			wantPhrase: "runtime / scheduler",
+		},
+		{
+			name: "io storage",
+			hotspots: []hotspotPayload{
+				{Function: "sqlite3_step", Samples: 24, Percent: 32},
+				{Function: "write", Samples: 18, Percent: 24},
+			},
+			wantPhrase: "IO / storage",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildAttribution(task, "tsk_eval/analysis/topn.json", tt.hotspots)
+			if got == nil {
+				t.Fatal("expected attribution")
+			}
+			if !strings.Contains(got.Conclusion, tt.wantPhrase) {
+				t.Fatalf("expected conclusion to contain %q, got %q", tt.wantPhrase, got.Conclusion)
+			}
+			if got.Confidence <= 0 || len(got.Evidence) == 0 || len(got.Recommendations) == 0 {
+				t.Fatalf("expected confidence, evidence and recommendations, got %+v", got)
+			}
+		})
+	}
+}
+
+func TestBuildAttributionIncludesBaselineEvidence(t *testing.T) {
+	task := minidrop.Task{
+		ID:                "tsk_baseline",
+		CollectorType:     minidrop.CollectorMockPerf,
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+	}
+	hotspots := []hotspotPayload{
+		{Function: "storage.writeArtifacts", Samples: 42, Percent: 42},
+		{Function: "handler.profileTask", Samples: 20, Percent: 20},
+	}
+	baselines := []minidrop.AttributionBaseline{
+		{
+			CollectorType:   minidrop.CollectorMockPerf,
+			FunctionPattern: "storage",
+			ExpectedPercent: 12,
+			Description:     "storage baseline",
+		},
+	}
+
+	got := buildAttributionWithBaselines(task, "tsk_baseline/analysis/topn.json", hotspots, baselines)
+	if got == nil {
+		t.Fatal("expected attribution")
+	}
+	if len(got.ToolTrace) < 3 {
+		t.Fatalf("expected tool trace, got %+v", got.ToolTrace)
+	}
+	foundBaseline := false
+	for _, item := range got.Evidence {
+		if item.Kind == "baseline" && strings.Contains(item.Detail, "storage baseline") {
+			foundBaseline = true
+		}
+	}
+	if !foundBaseline {
+		t.Fatalf("expected baseline evidence, got %+v", got.Evidence)
+	}
+	if !strings.Contains(got.Prompt, "baseline=storage baseline") {
+		t.Fatalf("expected prompt to include baseline summary, got %q", got.Prompt)
+	}
+}
+
 func TestTaskTransitionValidation(t *testing.T) {
 	if err := minidrop.ValidateTaskTransition(minidrop.TaskStatusPending, minidrop.TaskStatusRunning); err != nil {
 		t.Fatalf("expected valid transition: %v", err)
 	}
 	if err := minidrop.ValidateTaskTransition(minidrop.TaskStatusPending, minidrop.TaskStatusDone); err == nil {
 		t.Fatal("expected invalid transition")
+	}
+}
+
+func TestCreateContinuousProfileCreatesInitialWindow(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "agt_schedule",
+		"hostname": "demo-host",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusOK)
+
+	resp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles", map[string]any{
+		"name":                "five minute window",
+		"target_pid":          4321,
+		"target_agent_id":     "agt_schedule",
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+		"interval_sec":        300,
+	}, http.StatusCreated)
+
+	profile := resp["profile"].(map[string]any)
+	if got := profile["window_duration_sec"].(float64); got != 300 {
+		t.Fatalf("expected 300 second window, got %v", got)
+	}
+
+	profilesResp := performJSON(t, router, http.MethodGet, "/api/v1/continuous-profiles", nil, http.StatusOK)
+	profiles := profilesResp["profiles"].([]any)
+	if len(profiles) != 1 {
+		t.Fatalf("expected 1 continuous profile, got %d", len(profiles))
+	}
+	profileID := profiles[0].(map[string]any)["id"].(string)
+
+	windowsResp := performJSON(t, router, http.MethodGet, "/api/v1/continuous-profiles/"+profileID+"/windows", nil, http.StatusOK)
+	windows := windowsResp["windows"].([]any)
+	if len(windows) != 1 {
+		t.Fatalf("expected initial window, got %d", len(windows))
+	}
+	window := windows[0].(map[string]any)
+	if got := window["status"].(string); got != string(minidrop.TaskStatusPending) {
+		t.Fatalf("expected pending window, got %s", got)
+	}
+}
+
+func TestContinuousWindowTaskStatusSyncsToWindow(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "agt_schedule_sync",
+		"hostname": "demo-host",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusOK)
+
+	createResp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles", map[string]any{
+		"name":                "five minute window",
+		"target_pid":          4321,
+		"target_agent_id":     "agt_schedule_sync",
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+		"interval_sec":        300,
+	}, http.StatusCreated)
+	profileID := createResp["profile"].(map[string]any)["id"].(string)
+
+	windowsResp := performJSON(t, router, http.MethodGet, "/api/v1/continuous-profiles/"+profileID+"/windows", nil, http.StatusOK)
+	windows := windowsResp["windows"].([]any)
+	window := windows[0].(map[string]any)
+	windowID := window["id"].(string)
+	taskID := window["task_id"].(string)
+
+	performJSON(t, router, http.MethodGet, "/api/v1/internal/tasks/claim?agent_id=agt_schedule_sync", nil, http.StatusOK)
+	performJSON(t, router, http.MethodPost, "/api/v1/internal/tasks/"+taskID+"/uploading", map[string]any{
+		"reason":            "continuous window ready",
+		"raw_artifact_path": taskID + "/raw/mock.perf.data.json",
+	}, http.StatusOK)
+	performJSON(t, router, http.MethodPost, "/api/v1/internal/tasks/"+taskID+"/complete", map[string]any{
+		"reason":            "artifact uploaded and flamegraph generated",
+		"raw_artifact_path": taskID + "/raw/mock.perf.data.json",
+		"flamegraph_path":   taskID + "/analysis/flamegraph.svg",
+		"topn_path":         taskID + "/analysis/topn.json",
+		"summary":           "Synthetic CPU profile ready",
+	}, http.StatusOK)
+
+	taskResp := performJSON(t, router, http.MethodGet, "/api/v1/tasks/"+taskID, nil, http.StatusOK)
+	task := taskResp["task"].(map[string]any)
+	if got := task["continuous_profile_id"].(string); got != profileID {
+		t.Fatalf("expected continuous_profile_id %s, got %s", profileID, got)
+	}
+	if got := task["continuous_window_id"].(string); got != windowID {
+		t.Fatalf("expected continuous_window_id %s, got %s", windowID, got)
+	}
+
+	windowsResp = performJSON(t, router, http.MethodGet, "/api/v1/continuous-profiles/"+profileID+"/windows", nil, http.StatusOK)
+	windows = windowsResp["windows"].([]any)
+	if got := windows[0].(map[string]any)["status"].(string); got != string(minidrop.TaskStatusDone) {
+		t.Fatalf("expected done window, got %s", got)
 	}
 }
 

@@ -21,11 +21,45 @@ export interface Hotspot {
   percent: number;
 }
 
+export interface AttributionEvidence {
+  kind: string;
+  detail: string;
+  function?: string;
+  samples?: number;
+  percent?: number;
+}
+
+export interface AttributionSource {
+  task_id: string;
+  collector_type: string;
+  sample_duration_sec: number;
+  sample_rate_hz: number;
+  topn_path: string;
+}
+
+export interface AttributionResult {
+  conclusion: string;
+  confidence: number;
+  evidence: AttributionEvidence[];
+  recommendations: string[];
+  source: AttributionSource;
+  tool_trace?: AttributionToolCall[];
+  prompt?: string;
+  persisted_at?: string;
+}
+
+export interface AttributionToolCall {
+  name: string;
+  input: string;
+  output: string;
+}
+
 export interface TaskResult {
   flamegraph_url: string;
   topn_url: string;
   summary: string;
   hotspots: Hotspot[];
+  attribution?: AttributionResult | null;
 }
 
 export interface Task {
@@ -35,6 +69,8 @@ export interface Task {
   sample_duration_sec: number;
   sample_rate_hz: number;
   collector_type: string;
+  continuous_profile_id?: string;
+  continuous_window_id?: string;
   status: "PENDING" | "RUNNING" | "UPLOADING" | "DONE" | "FAILED";
   status_reason: string;
   created_at: string;
@@ -62,4 +98,43 @@ export interface CreateTaskInput {
   sample_duration_sec: number;
   sample_rate_hz: number;
   collector_type: string;
+}
+
+export interface ContinuousProfile {
+  id: string;
+  name: string;
+  target_pid: number;
+  target_agent_id: string;
+  sample_duration_sec: number;
+  sample_rate_hz: number;
+  collector_type: string;
+  window_duration_sec: number;
+  interval_sec: number;
+  enabled: boolean;
+  last_window_start_at?: string;
+  last_scheduled_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContinuousWindow {
+  id: string;
+  profile_id: string;
+  task_id: string;
+  window_start_at: string;
+  window_end_at: string;
+  status: "PENDING" | "RUNNING" | "UPLOADING" | "DONE" | "FAILED";
+  status_reason: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateContinuousProfileInput {
+  name: string;
+  target_pid: number;
+  target_agent_id?: string;
+  sample_duration_sec: number;
+  sample_rate_hz: number;
+  collector_type: string;
+  interval_sec: number;
 }

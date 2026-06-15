@@ -81,6 +81,9 @@ func (s *Service) Run(ctx context.Context) error {
 			if s.processing.Load() {
 				continue
 			}
+			if err := s.claimContinuousProfileWindow(ctx); err != nil {
+				s.log.Warn("claim continuous profile window failed", "error", err)
+			}
 			task, ok, err := s.claimTask(ctx)
 			if err != nil {
 				s.log.Warn("claim task failed", "error", err)
@@ -139,41 +142,117 @@ func (s *Service) claimTask(ctx context.Context) (apiTask, bool, error) {
 	return envelope.Task, true, nil
 }
 
+func (s *Service) claimContinuousProfileWindow(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.APIBaseURL+"/api/v1/internal/continuous-profiles/claim?agent_id="+s.cfg.AgentID, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusCreated {
+		return nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("claim continuous profile window: unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(payload)))
+	}
+
+	return nil
+}
+
 func (s *Service) processTask(ctx context.Context, task apiTask) error {
+	started := time.Now()
+	s.log.Info(
+		"task processing started",
+		"task_id", task.ID,
+		"agent_id", s.cfg.AgentID,
+		"collector_type", task.CollectorType,
+		"target_pid", task.TargetPID,
+		"sample_rate_hz", task.SampleRateHz,
+		"sample_duration_sec", task.SampleDurationSec,
+	)
 	if ok, err := processExists(task.TargetPID); err != nil {
-		return s.failTask(ctx, task.ID, fmt.Sprintf("process existence check failed: %v", err), "")
+		reason := fmt.Sprintf("process existence check failed: %v", err)
+		s.log.Error("task failed before collection", "task_id", task.ID, "reason", reason)
+		return s.failTask(ctx, task.ID, reason, "")
 	} else if !ok {
+		s.log.Error("task failed before collection", "task_id", task.ID, "reason", "target pid not found")
 		return s.failTask(ctx, task.ID, "target pid not found", "")
 	}
 
-	rawRelPath, rawAbsPath, err := s.writeRawArtifact(task)
+	rawRelPath, rawAbsPath, uploadReason, err := s.collectTask(ctx, task)
 	if err != nil {
-		return s.failTask(ctx, task.ID, fmt.Sprintf("write mock artifact: %v", err), "")
+		s.log.Error("task collection failed", "task_id", task.ID, "collector_type", task.CollectorType, "error", err)
+		return s.failTask(ctx, task.ID, err.Error(), "")
 	}
+	s.log.Info(
+		"task collection completed",
+		"task_id", task.ID,
+		"collector_type", task.CollectorType,
+		"raw_artifact_path", rawRelPath,
+		"duration_ms", time.Since(started).Milliseconds(),
+	)
 
-	time.Sleep(s.cfg.MockCollectDelay)
 	if err := s.postJSON(ctx, "/api/v1/internal/tasks/"+task.ID+"/uploading", map[string]string{
-		"reason":            "mock collector finished",
+		"reason":            uploadReason,
 		"raw_artifact_path": rawRelPath,
 	}, nil); err != nil {
 		return err
 	}
+	s.log.Info("task marked uploading", "task_id", task.ID, "reason", uploadReason, "raw_artifact_path", rawRelPath)
 
 	result, err := s.runAnalyzer(ctx, task, rawAbsPath)
 	if err != nil {
+		s.log.Error("task analysis failed", "task_id", task.ID, "raw_artifact_path", rawRelPath, "error", err)
 		return s.failTask(ctx, task.ID, fmt.Sprintf("analyzer failed: %v", err), rawRelPath)
 	}
+	s.log.Info(
+		"task analysis completed",
+		"task_id", task.ID,
+		"flamegraph_path", result.FlamegraphPath,
+		"topn_path", result.TopNPath,
+	)
 
-	return s.postJSON(ctx, "/api/v1/internal/tasks/"+task.ID+"/complete", map[string]string{
+	if err := s.postJSON(ctx, "/api/v1/internal/tasks/"+task.ID+"/complete", map[string]string{
 		"reason":            "artifact uploaded and flamegraph generated",
 		"raw_artifact_path": rawRelPath,
 		"flamegraph_path":   result.FlamegraphPath,
 		"topn_path":         result.TopNPath,
 		"summary":           result.Summary,
-	}, nil)
+	}, nil); err != nil {
+		return err
+	}
+
+	s.log.Info("task processing completed", "task_id", task.ID, "duration_ms", time.Since(started).Milliseconds())
+	return nil
 }
 
-func (s *Service) writeRawArtifact(task apiTask) (string, string, error) {
+func (s *Service) collectTask(ctx context.Context, task apiTask) (string, string, string, error) {
+	switch strings.ToLower(strings.TrimSpace(task.CollectorType)) {
+	case "", "mock-perf":
+		time.Sleep(s.cfg.MockCollectDelay)
+		rawRelPath, rawAbsPath, err := s.writeMockArtifact(task)
+		if err != nil {
+			return "", "", "", fmt.Errorf("write mock artifact: %w", err)
+		}
+		return rawRelPath, rawAbsPath, "mock collector finished", nil
+	case "perf":
+		return s.runPerfCollector(ctx, task)
+	case "ebpf-syscall":
+		return s.runEBPFSyscallCollector(ctx, task)
+	case "py-spy":
+		return s.runPySpyCollector(ctx, task)
+	default:
+		return "", "", "", fmt.Errorf("unsupported collector_type %q", task.CollectorType)
+	}
+}
+
+func (s *Service) writeMockArtifact(task apiTask) (string, string, error) {
 	artifactDir := filepath.Join(s.cfg.ArtifactDir, task.ID, "raw")
 	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
 		return "", "", err

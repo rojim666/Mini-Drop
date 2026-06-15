@@ -1,11 +1,23 @@
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
+from argparse import ArgumentParser
 
 
-API_BASE = "http://127.0.0.1:8080"
+API_BASE = os.environ.get("MINIDROP_API_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
+
+
+def parse_args() -> object:
+    parser = ArgumentParser(description="Run a Mini-Drop API/Agent smoke task.")
+    parser.add_argument("pid", type=int)
+    parser.add_argument("agent_id", nargs="?", default="")
+    parser.add_argument("collector_type", nargs="?", default="mock-perf")
+    parser.add_argument("--expect-status", choices=["DONE", "FAILED"], default="DONE")
+    parser.add_argument("--expect-reason-contains", default="")
+    return parser.parse_args()
 
 
 def request_json(path: str, method: str = "GET", body: dict | None = None) -> dict:
@@ -21,36 +33,45 @@ def request_json(path: str, method: str = "GET", body: dict | None = None) -> di
 
 
 def main() -> int:
-    if len(sys.argv) < 2:
-        print("usage: python scripts/demo/smoke_e2e.py <pid> [agent_id]", file=sys.stderr)
-        return 1
-
-    target_pid = int(sys.argv[1])
-    target_agent_id = sys.argv[2] if len(sys.argv) > 2 else ""
+    args = parse_args()
+    target_pid = args.pid
+    target_agent_id = args.agent_id
+    collector_type = args.collector_type
+    sample_duration = 15 if collector_type == "perf" else 5
+    sample_rate = 1 if collector_type == "ebpf-syscall" else 99
+    deadline_seconds = sample_duration + 45
 
     body = {
         "target_pid": target_pid,
         "target_agent_id": target_agent_id,
-        "sample_duration_sec": 15,
-        "sample_rate_hz": 99,
-        "collector_type": "mock-perf",
+        "sample_duration_sec": sample_duration,
+        "sample_rate_hz": sample_rate,
+        "collector_type": collector_type,
     }
 
     created = request_json("/api/v1/tasks", method="POST", body=body)
     task_id = created["task"]["id"]
     print(f"created task {task_id}")
 
-    deadline = time.time() + 30
+    deadline = time.time() + deadline_seconds
     while time.time() < deadline:
         task = request_json(f"/api/v1/tasks/{task_id}")["task"]
         print(f"task {task_id} status={task['status']} reason={task['status_reason']}")
         if task["status"] in {"DONE", "FAILED"}:
+            if task["status"] != args.expect_status:
+                print(f"expected status {args.expect_status}, got {task['status']}", file=sys.stderr)
+                return 4
+            if args.expect_reason_contains and args.expect_reason_contains not in task["status_reason"]:
+                print(
+                    f"expected reason to contain {args.expect_reason_contains!r}, got {task['status_reason']!r}",
+                    file=sys.stderr,
+                )
+                return 5
             if task["status"] == "DONE":
                 result = task.get("result") or {}
                 print(f"flamegraph={result.get('flamegraph_url')}")
                 print(f"topn={result.get('topn_url')}")
-                return 0
-            return 2
+            return 0
         time.sleep(2)
 
     print("timed out waiting for task completion", file=sys.stderr)
