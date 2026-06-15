@@ -213,14 +213,13 @@ make smoke-real COLLECTOR_TYPE=py-spy
 - Analyzer / API 读取 TopN。
 - 匹配热点规则。
 - 与 baseline 样例对比。
-- 输出 conclusion、confidence、evidence、recommendations、source、tool trace。
+- 输出 conclusion、confidence、evidence、recommendations、source、resource timeline、tool trace。
 - Web `归因建议` tab 展示完整证据链。
 
-当前状态：规则驱动版本已完成。
+当前状态：规则驱动版本和 analyzer 资源时间线 artifact 已完成。`perf` 分析会从 `perf script` 采样时间戳聚合 `resource_timeline.json`，mock/eBPF/py-spy 复用同一结构化契约。
 
 下一步增强：
 
-- 接入真实资源时间线。
 - 接入远程 LLM，但只允许它调用结构化工具。
 - 扩充评测样例和评分报告。
 

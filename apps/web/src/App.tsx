@@ -2066,6 +2066,8 @@ function AttributionPanel({ attribution }: { attribution: NonNullable<Task["resu
     return <EmptyBlock text="任务完成后会展示归因建议。" />;
   }
 
+  const timeline = attribution.resource_timeline;
+
   return (
     <div className="attribution-panel">
       <div className="attribution-summary">
@@ -2081,6 +2083,8 @@ function AttributionPanel({ attribution }: { attribution: NonNullable<Task["resu
           <strong>{Math.round(attribution.confidence * 100)}%</strong>
         </div>
       </div>
+
+      {timeline ? <ResourceTimelineView timeline={timeline} path={attribution.source.resource_timeline_path} /> : null}
 
       <div className="attribution-grid">
         <section className="attribution-section">
@@ -2135,6 +2139,12 @@ function AttributionPanel({ attribution }: { attribution: NonNullable<Task["resu
                 <dd>{formatDate(attribution.persisted_at)}</dd>
               </div>
             ) : null}
+            {attribution.source.resource_timeline_path ? (
+              <div>
+                <dt>时间线</dt>
+                <dd>{attribution.source.resource_timeline_path}</dd>
+              </div>
+            ) : null}
           </dl>
         </section>
 
@@ -2159,6 +2169,63 @@ function AttributionPanel({ attribution }: { attribution: NonNullable<Task["resu
         </section>
       </div>
     </div>
+  );
+}
+
+function ResourceTimelineView({
+  timeline,
+  path,
+}: {
+  timeline: NonNullable<NonNullable<Task["result"]>["attribution"]>["resource_timeline"];
+  path?: string;
+}) {
+  if (!timeline) {
+    return null;
+  }
+  const maxValue = Math.max(...timeline.points.map((point) => point.value), 1);
+
+  return (
+    <section className="resource-timeline-panel">
+      <div className="resource-timeline-head">
+        <div>
+          <span>资源时间线</span>
+          <strong>{timeline.summary}</strong>
+        </div>
+        <div className="resource-timeline-meta">
+          <span>{timeline.source}</span>
+          <span>{timeline.signal}</span>
+          <span>{timeline.alignment}</span>
+        </div>
+      </div>
+      <div className="resource-timeline-chart" aria-label="资源时间线点位">
+        {timeline.points.map((point, index) => (
+          <div className="resource-timeline-point" key={`${point.offset_sec}-${index}`}>
+            <div className="resource-timeline-bar">
+              <span style={{ height: `${Math.max((point.value / maxValue) * 100, 4)}%` }} />
+            </div>
+            <em>{point.offset_sec}s</em>
+          </div>
+        ))}
+      </div>
+      <dl className="resource-timeline-stats">
+        <div>
+          <dt>Top 函数</dt>
+          <dd>{timeline.top_function}</dd>
+        </div>
+        <div>
+          <dt>峰值</dt>
+          <dd>{timeline.peak_percent}%</dd>
+        </div>
+        <div>
+          <dt>窗口</dt>
+          <dd>{timeline.window_sec}s</dd>
+        </div>
+        <div>
+          <dt>来源</dt>
+          <dd>{path ?? timeline.source}</dd>
+        </div>
+      </dl>
+    </section>
   );
 }
 

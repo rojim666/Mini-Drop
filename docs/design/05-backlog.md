@@ -129,3 +129,4 @@ be finished before lower items are started.
 - [x] Implement attribution prompt and tool loop.
 - [x] Store attribution result with evidence.
 - [x] Write small evaluation report.
+- [x] Add analyzer-backed structured resource timeline evidence.

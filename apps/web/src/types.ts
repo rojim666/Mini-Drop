@@ -27,6 +27,7 @@ export interface AttributionEvidence {
   function?: string;
   samples?: number;
   percent?: number;
+  resource_timeline?: ResourceTimeline;
 }
 
 export interface AttributionSource {
@@ -35,6 +36,24 @@ export interface AttributionSource {
   sample_duration_sec: number;
   sample_rate_hz: number;
   topn_path: string;
+  resource_timeline_path?: string;
+}
+
+export interface ResourceTimelinePoint {
+  offset_sec: number;
+  value: number;
+  samples: number;
+}
+
+export interface ResourceTimeline {
+  source: string;
+  signal: string;
+  alignment: string;
+  summary: string;
+  window_sec: number;
+  top_function: string;
+  peak_percent: number;
+  points: ResourceTimelinePoint[];
 }
 
 export interface AttributionResult {
@@ -43,6 +62,7 @@ export interface AttributionResult {
   evidence: AttributionEvidence[];
   recommendations: string[];
   source: AttributionSource;
+  resource_timeline?: ResourceTimeline;
   tool_trace?: AttributionToolCall[];
   prompt?: string;
   persisted_at?: string;
