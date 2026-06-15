@@ -77,6 +77,7 @@ make demo-evidence
 make recording-checklist
 make submission-notes
 make capture-submission-artifacts
+make attribution-evaluation
 make coverage
 make final-preflight
 make demo-down
@@ -104,6 +105,9 @@ expected screenshot file names and a concise commit summary template.
 `make capture-submission-artifacts` captures the 10-image submission manifest
 under `artifacts/submission-screenshots/`, covering Web screens, generated
 evidence files, coverage, and MinIO console proof.
+`make attribution-evaluation` writes
+`artifacts/attribution-evaluation-report.md`, a six-sample weighted scoring
+report for the deterministic attribution loop.
 `make final-preflight` runs the lightweight recording gate, then writes
 `artifacts/final-preflight.md` with the combined check results, command
 outputs, and the final record/no-record decision.
@@ -125,6 +129,7 @@ On Windows without `make`, use the PowerShell snapshot helper directly:
 .\scripts\demo\write-recording-checklist.ps1
 .\scripts\demo\write-submission-notes.ps1
 .\scripts\demo\capture-submission-artifacts.ps1
+python .\scripts\demo\write_attribution_evaluation.py
 python .\scripts\demo\check_coverage.py
 .\scripts\demo\final-preflight.ps1
 ```
@@ -248,6 +253,7 @@ temporary `kernel.yama.ptrace_scope` adjustment.
 - `flamegraph_url` and `topn_url` contain `X-Amz-Signature` and the configured MinIO public port.
 - Web task detail can load the flamegraph SVG.
 - `make acceptance-snapshot` reports `acceptance=OK` before recording.
+- `make attribution-evaluation` reports `attribution_evaluation=OK` and writes the scored report.
 - Linux preflight checks explain missing tools or permissions clearly.
 - At least the `perf` smoke path reaches `DONE` after WSL2/Linux prerequisites are installed.
 

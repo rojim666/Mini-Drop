@@ -22,6 +22,7 @@ Generate acceptance and evidence output:
 .\scripts\demo\write-recording-checklist.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
 .\scripts\demo\write-submission-notes.ps1 -ApiPort 18080 -WebPort 14173 -MinioConsolePort 19001
 python .\scripts\demo\check_coverage.py
+python .\scripts\demo\write_attribution_evaluation.py
 .\scripts\demo\capture-submission-artifacts.ps1 -WebPort 14173 -MinioConsolePort 19001
 .\scripts\demo\final-preflight.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001 -IncludeRealPreflight
 ```
@@ -36,6 +37,7 @@ Open these URLs before recording:
 - Submission notes: `artifacts/submission-notes.md`
 - Screenshot evidence: `artifacts/submission-screenshots/`
 - Coverage report: `artifacts/coverage-report.md`
+- Attribution evaluation: `artifacts/attribution-evaluation-report.md`
 - Final preflight: `artifacts/final-preflight.md`
 
 Expected preflight state on the current machine:
@@ -196,6 +198,7 @@ Before finishing, show or mention:
 - `artifacts/submission-notes.md` screenshot manifest.
 - `artifacts/submission-screenshots/` contains 10 generated PNGs.
 - `artifacts/coverage-report.md` required gates.
+- `artifacts/attribution-evaluation-report.md` six-sample scoring report.
 - `artifacts/final-preflight.md` overall status.
 - Recent Git commits with meaningful messages.
 - Tests:

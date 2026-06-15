@@ -216,12 +216,12 @@ make smoke-real COLLECTOR_TYPE=py-spy
 - 输出 conclusion、confidence、evidence、recommendations、source、resource timeline、tool trace。
 - Web `归因建议` tab 展示完整证据链。
 
-当前状态：规则驱动版本和 analyzer 资源时间线 artifact 已完成。`perf` 分析会从 `perf script` 采样时间戳聚合 `resource_timeline.json`，mock/eBPF/py-spy 复用同一结构化契约。
+当前状态：规则驱动版本、analyzer 资源时间线 artifact、6 个评测样例和评分报告已完成。`perf` 分析会从 `perf script` 采样时间戳聚合 `resource_timeline.json`，mock/eBPF/py-spy 复用同一结构化契约。
 
 下一步增强：
 
 - 接入远程 LLM，但只允许它调用结构化工具。
-- 扩充评测样例和评分报告。
+- 将评测报告与远程 LLM 版本对齐，确保 LLM 只能在同一证据边界内改写结论。
 
 ## 当前下一步
 
@@ -234,6 +234,7 @@ make smoke-real COLLECTOR_TYPE=py-spy
 5. 按 `docs/demo-script.md` 录制最终演示，并补截图和提交说明。
 6. 录制前运行 `make final-preflight`，用 `artifacts/final-preflight.md` 汇总静态检查、自动测试、验收快照和交付材料生成状态。
 7. 在真实 smoke 前运行 `make real-preflight`，用 `artifacts/real-collector-preflight.md` 固化 WSL2/Linux 依赖、权限和下一步安装命令。
+8. 运行 `make attribution-evaluation`，用 `artifacts/attribution-evaluation-report.md` 固化智能归因样例评分。
 
 ## 两周交付排期
 
@@ -251,7 +252,7 @@ make smoke-real COLLECTOR_TYPE=py-spy
 | D10 | 异常路径和集成测试 | 完成 |
 | D11 | eBPF 采集器 | 代码完成，待 Linux 验证 |
 | D12 | Continuous Profiling 最小版 | 完成 |
-| D13 | 用户态采集器和智能归因 | 完成最小版 |
+| D13 | 用户态采集器和智能归因 | 完成最小版，归因评分报告已补 |
 | D14 | README、runbook、演示脚本、录屏准备 | 演示脚本、录制清单、提交说明模板、final preflight 和 real collector preflight 报告已补，最终人工录屏待完成 |
 
 ## Commit 规则

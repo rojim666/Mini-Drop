@@ -40,11 +40,46 @@ Automated tests cover:
 
 | Sample | Top Hotspot | Expected Result |
 |---|---|---|
-| Single hotspot | `main.spinCPU` at 60% | Conclusion contains `单个热点` |
+| Single CPU hotspot | `main.spinCPU` at 64% | Conclusion contains `单个热点` |
 | Runtime scheduling | `runtime.schedule` and `runtime.park_m` | Conclusion contains `runtime / scheduler` |
-| IO/storage | `sqlite3_step` and `write` | Conclusion contains `IO / storage` |
-| Baseline comparison | `storage.writeArtifacts` at 42% vs 12% baseline | Evidence contains `baseline` |
-| Resource timeline | analyzer `resource_timeline.json` with `perf_script_samples` | Attribution payload and persisted record include the structured timeline |
+| IO/storage baseline regression | `storage.writeArtifacts` at 42% vs 12% baseline | Evidence contains `baseline` |
+| Perf allocation with timeline | `malloc` with `perf_script_samples` timeline | Conclusion contains allocation guidance and the timeline remains attached |
+| Mixed CPU hotspots | `business.route`, `crypto.hash`, `template.render` | Conclusion avoids overconfident single-cause attribution |
+| eBPF syscall distribution | `read`, `write`, `epoll_wait` | Conclusion contains `IO / storage` with syscall timeline alignment |
+
+## Scored Report
+
+Run:
+
+```bash
+make attribution-evaluation
+```
+
+Or, without `make`:
+
+```powershell
+python scripts\demo\write_attribution_evaluation.py
+```
+
+The command writes `artifacts/attribution-evaluation-report.md`. It executes
+`go test -run TestAttributionEvaluationSamples -v ./internal/apiserver`,
+parses the emitted `ATTRIBUTION_EVAL` JSON lines, and creates a reviewable
+Markdown report.
+
+Each of the six samples is scored on a 10-point rubric:
+
+| Criterion | Weight |
+|---|---:|
+| conclusion | 2 |
+| evidence | 2 |
+| timeline | 2 |
+| tool_trace | 2 |
+| recommendation | 1 |
+| confidence | 1 |
+
+The full report is a 60-point evidence artifact for the deterministic
+attribution loop. `make final-preflight` also generates this report and fails
+the recording gate if any required sample fails.
 
 ## Current Limitations
 
@@ -62,8 +97,10 @@ Run:
 
 ```bash
 go test ./internal/apiserver
+make attribution-evaluation
 ```
 
 The tests verify that attribution is returned from task results, persisted on
 first read, reused on later reads, includes a tool trace, includes resource
-timeline evidence, and can include baseline evidence.
+timeline evidence, can include baseline evidence, and produces a scored
+Markdown evaluation report for review.

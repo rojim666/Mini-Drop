@@ -130,3 +130,4 @@ be finished before lower items are started.
 - [x] Store attribution result with evidence.
 - [x] Write small evaluation report.
 - [x] Add analyzer-backed structured resource timeline evidence.
+- [x] Expand attribution evaluation samples and generated scoring report.
