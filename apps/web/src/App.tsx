@@ -3,20 +3,27 @@ import {
   AlertCircle,
   ActivitySquare,
   BrainCircuit,
+  Building2,
   CheckCircle2,
   ExternalLink,
   FolderOpen,
   GitCompareArrows,
+  Globe2,
   History,
+  KeyRound,
   LayoutDashboard,
   Loader2,
+  LockKeyhole,
   Monitor,
   PauseCircle,
   PlayCircle,
   RadioTower,
   Rows3,
   Search,
+  Server,
+  ShieldCheck,
   Timer,
+  UserRound,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -526,7 +533,7 @@ function DropLandingLoader() {
 function LoginPage({ onLogin }: { onLogin: (event: React.FormEvent<HTMLFormElement>) => void }) {
   return (
     <main className="login-shell">
-      <section className="login-card">
+      <header className="login-topbar">
         <div className="login-brand">
           <span className="brand-mark">
             <ActivitySquare size={22} />
@@ -536,38 +543,168 @@ function LoginPage({ onLogin }: { onLogin: (event: React.FormEvent<HTMLFormEleme
             <span>性能优化平台</span>
           </div>
         </div>
-        <div className="login-copy">
-          <h1>登录</h1>
-          <p>进入端到端性能采样工作台，创建任务、查看 Agent、下载 perf.data 并审阅火焰图与归因建议。</p>
-        </div>
-        <form className="login-form" onSubmit={onLogin}>
-          <label>
-            <span>用户名</span>
-            <input type="text" defaultValue="demo" />
-          </label>
-          <label>
-            <span>密码</span>
-            <input type="password" defaultValue="minidrop" />
-          </label>
-          <button className="primary-button" type="submit">
-            登录控制台
-          </button>
-        </form>
-        <div className="login-checklist">
-          <div>
-            <CheckCircle2 size={15} />
-            <span>Docker Compose E2E</span>
+        <nav className="login-links" aria-label="登录页辅助导航">
+          <a href="#quick">快速接入</a>
+          <a href="#machines">节点管理</a>
+          <a href="#history">任务中心</a>
+          <a href="#files">制品分析</a>
+        </nav>
+      </header>
+
+      <section className="login-main">
+        <section className="login-brief">
+          <div className="login-brief-copy">
+            <span className="login-kicker">Mini-Drop Console</span>
+            <h1>登录性能诊断控制台</h1>
+            <p>统一管理 Agent、采样任务、火焰图制品和 AI 归因结果，面向本地 Demo 与 WSL2 真实 perf 验证场景。</p>
           </div>
-          <div>
-            <CheckCircle2 size={15} />
-            <span>Agent 心跳与任务状态机</span>
+
+          <div className="login-signal-grid">
+            <div>
+              <span>任务链路</span>
+              <strong>PENDING → DONE</strong>
+            </div>
+            <div>
+              <span>采集器</span>
+              <strong>mock-perf / perf</strong>
+            </div>
+            <div>
+              <span>归因模式</span>
+              <strong>AI + 规则兜底</strong>
+            </div>
           </div>
-          <div>
-            <CheckCircle2 size={15} />
-            <span>火焰图与规则归因</span>
+
+          <div className="login-status-panel">
+            <div className="login-status-head">
+              <ShieldCheck size={18} />
+              <div>
+                <strong>演示环境状态</strong>
+                <span>Compose 五服务验收视图</span>
+              </div>
+            </div>
+            <div className="login-service-list">
+              <div>
+                <Server size={16} />
+                <span>API Server</span>
+                <strong>18080</strong>
+              </div>
+              <div>
+                <RadioTower size={16} />
+                <span>Agent</span>
+                <strong>drop_agent</strong>
+              </div>
+              <div>
+                <BrainCircuit size={16} />
+                <span>Analyzer</span>
+                <strong>ready</strong>
+              </div>
+              <div>
+                <FolderOpen size={16} />
+                <span>MinIO / Local</span>
+                <strong>artifacts</strong>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
+
+        <section className="login-card" aria-label="控制台登录">
+          <div className="login-card-head">
+            <div>
+              <h2>账号登录</h2>
+              <p>本地演示租户</p>
+            </div>
+            <span className="login-edition">Demo</span>
+          </div>
+
+          <div className="login-tabs" role="tablist" aria-label="登录方式">
+            <button className="active" type="button">
+              账号密码
+            </button>
+            <button type="button">企业 SSO</button>
+            <button type="button">访问密钥</button>
+          </div>
+
+          <form className="login-form" onSubmit={onLogin}>
+            <label>
+              <span>账号</span>
+              <div className="login-field">
+                <UserRound size={16} />
+                <input type="text" defaultValue="demo" autoComplete="username" />
+              </div>
+            </label>
+            <label>
+              <span>密码</span>
+              <div className="login-field">
+                <LockKeyhole size={16} />
+                <input type="password" defaultValue="minidrop" autoComplete="current-password" />
+              </div>
+            </label>
+            <label>
+              <span>登录范围</span>
+              <div className="login-field">
+                <Building2 size={16} />
+                <select defaultValue="local-demo">
+                  <option value="local-demo">本地演示租户 / default</option>
+                  <option value="wsl2-perf">WSL2 perf 验证 / ubuntu</option>
+                </select>
+              </div>
+            </label>
+            <label>
+              <span>地域</span>
+              <div className="login-field">
+                <Globe2 size={16} />
+                <select defaultValue="local">
+                  <option value="local">本地开发环境</option>
+                  <option value="compose">Docker Compose 环境</option>
+                  <option value="wsl2">WSL2 Ubuntu</option>
+                </select>
+              </div>
+            </label>
+
+            <div className="login-form-row">
+              <label className="login-checkbox">
+                <input type="checkbox" defaultChecked />
+                <span>保持登录状态</span>
+              </label>
+              <a href="#home">查看控制台入口</a>
+            </div>
+
+            <button className="primary-button" type="submit">
+              登录控制台
+            </button>
+          </form>
+
+          <div className="login-security-box">
+            <KeyRound size={16} />
+            <div>
+              <strong>安全校验</strong>
+              <span>当前为本地 Demo 登录，不会向外部认证服务发送账号信息。</span>
+            </div>
+          </div>
+
+          <div className="login-checklist">
+            <div>
+              <CheckCircle2 size={15} />
+              <span>Docker Compose E2E</span>
+            </div>
+            <div>
+              <CheckCircle2 size={15} />
+              <span>Agent 心跳与任务状态机</span>
+            </div>
+            <div>
+              <CheckCircle2 size={15} />
+              <span>火焰图、TopN 与 AI 归因</span>
+            </div>
+          </div>
+        </section>
       </section>
+
+      <footer className="login-footer">
+        <span>Mini-Drop Demo</span>
+        <span>性能采样</span>
+        <span>制品分析</span>
+        <span>智能归因</span>
+      </footer>
     </main>
   );
 }
