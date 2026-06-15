@@ -537,6 +537,24 @@ button:disabled {
   font-size: 13px;
 }
 
+.login-error {
+  min-height: 36px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #ffd4d0;
+  background: #fff5f4;
+  color: var(--tc-red);
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.login-error span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .login-checkbox {
   width: max-content;
   display: inline-flex !important;

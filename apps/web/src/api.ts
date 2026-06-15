@@ -8,16 +8,49 @@ import type {
   ContinuousWindowSummary,
   CreateContinuousProfileInput,
   CreateTaskInput,
+  LoginRequest,
+  LoginResponse,
   Task,
+  UserProfile,
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+const AUTH_TOKEN_STORAGE_KEY = "mini-drop-demo-auth-token";
+const AUTH_USER_STORAGE_KEY = "mini-drop-demo-auth-user";
+
+export function getStoredAuthToken() {
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? "";
+}
+
+export function getStoredUserProfile(): UserProfile | null {
+  const raw = window.localStorage.getItem(AUTH_USER_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as UserProfile;
+  } catch {
+    return null;
+  }
+}
+
+export function storeAuthSession(session: LoginResponse) {
+  window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, session.token);
+  window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(session.user));
+}
+
+export function clearAuthSession() {
+  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  window.localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getStoredAuthToken();
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -28,6 +61,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+export async function login(input: LoginRequest) {
+  return request<LoginResponse>("/api/v1/auth/login", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getCurrentUser() {
+  return request<{ user: UserProfile }>("/api/v1/auth/me");
 }
 
 export async function getAgents() {

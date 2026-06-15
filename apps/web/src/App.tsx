@@ -31,14 +31,20 @@ import type { LucideIcon } from "lucide-react";
 import {
   createContinuousProfile,
   createTask,
+  clearAuthSession,
   getAgents,
   getAuditLogs,
   getContinuousProfileTrends,
   getContinuousProfileWindows,
   getContinuousProfiles,
+  getCurrentUser,
+  getStoredAuthToken,
+  getStoredUserProfile,
   getTask,
   getTasks,
+  login,
   setContinuousProfileEnabled,
+  storeAuthSession,
 } from "./api";
 import type {
   Agent,
@@ -51,7 +57,9 @@ import type {
   CreateContinuousProfileInput,
   CreateTaskInput,
   Hotspot,
+  LoginRequest,
   Task,
+  UserProfile,
 } from "./types";
 import "./App.css";
 
@@ -64,8 +72,6 @@ const defaultWindowFilters: ContinuousWindowFilters & { range: WindowRangeKey } 
   range: "latest",
   limit: 24,
 };
-
-const LOGIN_STORAGE_KEY = "mini-drop-demo-authenticated";
 
 const defaultTaskInput: CreateTaskInput = {
   target_pid: 1,
@@ -102,7 +108,11 @@ function readNavFromHash(): NavKey {
 }
 
 function App() {
-  const [authenticated, setAuthenticated] = useState(() => window.localStorage.getItem(LOGIN_STORAGE_KEY) === "1");
+  const [authChecking, setAuthChecking] = useState(() => getStoredAuthToken() !== "");
+  const [authenticated, setAuthenticated] = useState(() => getStoredAuthToken() !== "");
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => getStoredUserProfile());
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginSubmitting, setLoginSubmitting] = useState(false);
   const [activeNav, setActiveNavState] = useState<NavKey>(readNavFromHash());
   const [agents, setAgents] = useState<Agent[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -134,8 +144,46 @@ function App() {
   };
 
   useEffect(() => {
-    void refreshOverview(true);
+    if (!getStoredAuthToken()) {
+      setAuthChecking(false);
+      setAuthenticated(false);
+      return;
+    }
+
+    let alive = true;
+    const verifySession = async () => {
+      try {
+        const data = await getCurrentUser();
+        if (alive) {
+          setCurrentUser(data.user);
+          setAuthenticated(true);
+          setLoginError(null);
+        }
+      } catch {
+        clearAuthSession();
+        if (alive) {
+          setCurrentUser(null);
+          setAuthenticated(false);
+        }
+      } finally {
+        if (alive) {
+          setAuthChecking(false);
+        }
+      }
+    };
+
+    void verifySession();
+    return () => {
+      alive = false;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!authenticated) {
+      return;
+    }
+    void refreshOverview(true);
+  }, [authenticated]);
 
   useEffect(() => {
     const onHashChange = () => setActiveNavState(readNavFromHash());
@@ -144,11 +192,14 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!authenticated) {
+      return;
+    }
     const interval = window.setInterval(() => {
       void refreshOverview(false);
     }, 3000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [authenticated]);
 
   useEffect(() => {
     if (!selectedTaskId) {
@@ -265,6 +316,10 @@ function App() {
   }, [selectedProfileId, windowFilters]);
 
   async function refreshOverview(initial = false) {
+    if (!authenticated) {
+      return;
+    }
+
     try {
       if (initial) {
         setLoading(true);
@@ -282,7 +337,15 @@ function App() {
       setAuditLogs(auditData.audit_logs);
       setError(null);
     } catch (overviewError) {
-      setError((overviewError as Error).message);
+      const message = (overviewError as Error).message;
+      if (message.includes("401") || message.toLowerCase().includes("auth")) {
+        clearAuthSession();
+        setAuthenticated(false);
+        setCurrentUser(null);
+        setLoginError("登录状态已失效，请重新登录。");
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -348,22 +411,48 @@ function App() {
 
   const showDropLandingLoader = activeNav === "home" && loading && agents.length === 0 && tasks.length === 0;
 
-  function handleLogin(event: React.FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    window.localStorage.setItem(LOGIN_STORAGE_KEY, "1");
-    setAuthenticated(true);
-    if (!window.location.hash) {
-      window.history.replaceState(null, "", "#home");
+    const form = event.currentTarget;
+    const payload: LoginRequest = {
+      username: String(new FormData(form).get("username") ?? ""),
+      password: String(new FormData(form).get("password") ?? ""),
+      tenant: String(new FormData(form).get("tenant") ?? "local-demo"),
+      region: String(new FormData(form).get("region") ?? "local"),
+    };
+
+    try {
+      setLoginSubmitting(true);
+      setLoginError(null);
+      const session = await login(payload);
+      storeAuthSession(session);
+      setCurrentUser(session.user);
+      setAuthenticated(true);
+      if (!window.location.hash) {
+        window.history.replaceState(null, "", "#home");
+      }
+    } catch (authError) {
+      clearAuthSession();
+      setAuthenticated(false);
+      setCurrentUser(null);
+      setLoginError((authError as Error).message);
+    } finally {
+      setLoginSubmitting(false);
     }
   }
 
   function handleLogout() {
-    window.localStorage.removeItem(LOGIN_STORAGE_KEY);
+    clearAuthSession();
+    setCurrentUser(null);
     setAuthenticated(false);
   }
 
+  if (authChecking) {
+    return <DropLandingLoader />;
+  }
+
   if (!authenticated) {
-    return <LoginPage onLogin={handleLogin} />;
+    return <LoginPage error={loginError} submitting={loginSubmitting} onLogin={handleLogin} />;
   }
 
   return (
@@ -373,6 +462,7 @@ function App() {
         setActiveNav={setActiveNav}
         onCreateTask={() => setCreateDialogOpen(true)}
         onLogout={handleLogout}
+        user={currentUser}
       />
 
       <div className="console-layout">
@@ -530,7 +620,15 @@ function DropLandingLoader() {
   );
 }
 
-function LoginPage({ onLogin }: { onLogin: (event: React.FormEvent<HTMLFormElement>) => void }) {
+function LoginPage({
+  error,
+  submitting,
+  onLogin,
+}: {
+  error: string | null;
+  submitting: boolean;
+  onLogin: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
   return (
     <main className="login-shell">
       <header className="login-topbar">
@@ -629,21 +727,21 @@ function LoginPage({ onLogin }: { onLogin: (event: React.FormEvent<HTMLFormEleme
               <span>账号</span>
               <div className="login-field">
                 <UserRound size={16} />
-                <input type="text" defaultValue="demo" autoComplete="username" />
+                <input name="username" type="text" defaultValue="demo" autoComplete="username" />
               </div>
             </label>
             <label>
               <span>密码</span>
               <div className="login-field">
                 <LockKeyhole size={16} />
-                <input type="password" defaultValue="minidrop" autoComplete="current-password" />
+                <input name="password" type="password" defaultValue="minidrop" autoComplete="current-password" />
               </div>
             </label>
             <label>
               <span>登录范围</span>
               <div className="login-field">
                 <Building2 size={16} />
-                <select defaultValue="local-demo">
+                <select name="tenant" defaultValue="local-demo">
                   <option value="local-demo">本地演示租户 / default</option>
                   <option value="wsl2-perf">WSL2 perf 验证 / ubuntu</option>
                 </select>
@@ -653,7 +751,7 @@ function LoginPage({ onLogin }: { onLogin: (event: React.FormEvent<HTMLFormEleme
               <span>地域</span>
               <div className="login-field">
                 <Globe2 size={16} />
-                <select defaultValue="local">
+                <select name="region" defaultValue="local">
                   <option value="local">本地开发环境</option>
                   <option value="compose">Docker Compose 环境</option>
                   <option value="wsl2">WSL2 Ubuntu</option>
@@ -669,8 +767,22 @@ function LoginPage({ onLogin }: { onLogin: (event: React.FormEvent<HTMLFormEleme
               <a href="#home">查看控制台入口</a>
             </div>
 
-            <button className="primary-button" type="submit">
-              登录控制台
+            {error ? (
+              <div className="login-error" role="alert">
+                <AlertCircle size={15} />
+                <span>{error}</span>
+              </div>
+            ) : null}
+
+            <button className="primary-button" type="submit" disabled={submitting}>
+              {submitting ? (
+                <>
+                  <Loader2 className="spin" size={14} />
+                  登录中
+                </>
+              ) : (
+                "登录控制台"
+              )}
             </button>
           </form>
 
@@ -768,11 +880,13 @@ function TopNav({
   setActiveNav,
   onCreateTask,
   onLogout,
+  user,
 }: {
   activeNav: NavKey;
   setActiveNav: (key: NavKey) => void;
   onCreateTask: () => void;
   onLogout: () => void;
+  user: UserProfile | null;
 }) {
   return (
     <header className="top-nav">
@@ -807,6 +921,9 @@ function TopNav({
         <button type="button" className="top-action secondary" onClick={() => setActiveNav("compare")}>
           用户组
         </button>
+        <span className="top-user" title={user ? `${user.tenant} / ${user.region}` : "未登录"}>
+          {user ? `${user.username} · ${user.tenant}` : "Guest"}
+        </span>
         <button type="button" className="top-action secondary" onClick={onLogout}>
           退出
         </button>

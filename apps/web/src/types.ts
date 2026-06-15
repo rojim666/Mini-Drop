@@ -7,6 +7,25 @@ export interface Agent {
   last_heartbeat_at: string;
 }
 
+export interface UserProfile {
+  username: string;
+  tenant: string;
+  region: string;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+  tenant: string;
+  region: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  expires_at: string;
+  user: UserProfile;
+}
+
 export interface TaskEvent {
   id: string;
   from_status: string;
