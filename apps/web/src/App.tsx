@@ -47,6 +47,7 @@ import "./App.css";
 
 type NavKey = "home" | "quick" | "machines" | "history" | "files" | "schedule" | "compare";
 type WindowRangeKey = "latest" | "1h" | "6h" | "24h";
+const navKeys: NavKey[] = ["home", "quick", "machines", "history", "files", "schedule", "compare"];
 
 const defaultWindowFilters: ContinuousWindowFilters & { range: WindowRangeKey } = {
   status: "ALL",
@@ -83,8 +84,13 @@ const topLinks: Array<{ key: NavKey; label: string; icon: LucideIcon }> = [
   { key: "compare", label: "任务对比", icon: GitCompareArrows },
 ];
 
+function readNavFromHash(): NavKey {
+  const value = window.location.hash.replace(/^#\/?/, "");
+  return navKeys.includes(value as NavKey) ? (value as NavKey) : "home";
+}
+
 function App() {
-  const [activeNav, setActiveNav] = useState<NavKey>("home");
+  const [activeNav, setActiveNavState] = useState<NavKey>(readNavFromHash());
   const [agents, setAgents] = useState<Agent[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [profiles, setProfiles] = useState<ContinuousProfile[]>([]);
@@ -107,8 +113,21 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const setActiveNav = (key: NavKey) => {
+    setActiveNavState(key);
+    if (window.location.hash !== `#${key}`) {
+      window.history.replaceState(null, "", `#${key}`);
+    }
+  };
+
   useEffect(() => {
     void refreshOverview(true);
+  }, []);
+
+  useEffect(() => {
+    const onHashChange = () => setActiveNavState(readNavFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
   useEffect(() => {
