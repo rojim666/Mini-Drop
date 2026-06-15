@@ -353,7 +353,11 @@ func (s *Service) requestLogMiddleware() gin.HandlerFunc {
 
 func (s *Service) listAgents(c *gin.Context) {
 	var agents []minidrop.Agent
-	if err := s.db.Order("status desc, last_heartbeat_at desc").Find(&agents).Error; err != nil {
+	query := s.db.Order("status desc, last_heartbeat_at desc")
+	if len(s.cfg.AgentAllowlist) > 0 {
+		query = query.Where("id IN ?", s.cfg.AgentAllowlist)
+	}
+	if err := query.Find(&agents).Error; err != nil {
 		s.writeError(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -380,6 +384,10 @@ func (s *Service) heartbeatAgent(c *gin.Context) {
 
 	if req.AgentID == "" || req.Hostname == "" || req.IP == "" || req.Version == "" {
 		s.writeError(c, http.StatusBadRequest, errors.New("agent_id, hostname, ip, and version are required"))
+		return
+	}
+	if !s.agentAllowed(req.AgentID) {
+		s.writeError(c, http.StatusForbidden, fmt.Errorf("agent %s is not allowed by this API instance", req.AgentID))
 		return
 	}
 
@@ -668,7 +676,11 @@ func (s *Service) createContinuousProfile(c *gin.Context) {
 
 func (s *Service) pickAutoTargetAgent(tx *gorm.DB) (minidrop.Agent, error) {
 	var agents []minidrop.Agent
-	if err := tx.Where("status = ?", minidrop.AgentStatusOnline).
+	query := tx.Where("status = ?", minidrop.AgentStatusOnline)
+	if len(s.cfg.AgentAllowlist) > 0 {
+		query = query.Where("id IN ?", s.cfg.AgentAllowlist)
+	}
+	if err := query.
 		Order("last_heartbeat_at desc, id asc").
 		Find(&agents).Error; err != nil {
 		return minidrop.Agent{}, err
@@ -702,6 +714,18 @@ func (s *Service) pickAutoTargetAgent(tx *gorm.DB) (minidrop.Agent, error) {
 	}
 
 	return bestAgent, nil
+}
+
+func (s *Service) agentAllowed(agentID string) bool {
+	if len(s.cfg.AgentAllowlist) == 0 {
+		return true
+	}
+	for _, allowed := range s.cfg.AgentAllowlist {
+		if allowed == agentID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) getContinuousProfile(c *gin.Context) {

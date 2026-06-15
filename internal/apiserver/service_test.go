@@ -35,6 +35,39 @@ func newTestService(t *testing.T) *Service {
 	return svc
 }
 
+func newTestServiceWithConfig(t *testing.T, cfg Config) *Service {
+	t.Helper()
+	ctx := context.Background()
+	dir := t.TempDir()
+	if cfg.Addr == "" {
+		cfg.Addr = "127.0.0.1:0"
+	}
+	if cfg.DataDir == "" {
+		cfg.DataDir = filepath.Join(dir, "data")
+	}
+	if cfg.DBPath == "" {
+		cfg.DBPath = filepath.Join(dir, "data", "mini-drop.db")
+	}
+	if cfg.ArtifactDir == "" {
+		cfg.ArtifactDir = filepath.Join(dir, "artifacts")
+	}
+	if cfg.AllowedOrigin == "" {
+		cfg.AllowedOrigin = "http://127.0.0.1:5173"
+	}
+	if cfg.OfflineAfter == 0 {
+		cfg.OfflineAfter = 30 * time.Second
+	}
+	if cfg.OfflineCheckInterval == 0 {
+		cfg.OfflineCheckInterval = time.Hour
+	}
+	svc, err := New(ctx, cfg)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	return svc
+}
+
 func TestTaskLifecycleHappyPath(t *testing.T) {
 	svc := newTestService(t)
 	router := svc.Router()
@@ -84,6 +117,34 @@ func TestTaskLifecycleHappyPath(t *testing.T) {
 	events := task["events"].([]any)
 	if len(events) != 4 {
 		t.Fatalf("expected 4 status events, got %d", len(events))
+	}
+}
+
+func TestAgentAllowlistRejectsUnexpectedHeartbeat(t *testing.T) {
+	svc := newTestServiceWithConfig(t, Config{AgentAllowlist: []string{"drop_agent"}})
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "agt_local",
+		"hostname": "windows-agent",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusForbidden)
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "drop_agent",
+		"hostname": "drop-agent",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusOK)
+
+	resp := performJSON(t, router, http.MethodGet, "/api/v1/agents", nil, http.StatusOK)
+	agents := resp["agents"].([]any)
+	if len(agents) != 1 {
+		t.Fatalf("expected one allowed agent, got %d", len(agents))
+	}
+	if got := agents[0].(map[string]any)["id"].(string); got != "drop_agent" {
+		t.Fatalf("expected drop_agent, got %s", got)
 	}
 }
 
