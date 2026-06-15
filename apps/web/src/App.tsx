@@ -650,7 +650,7 @@ function HomePage({
       <section className="content-grid">
         <div className="console-card report-card">
           <CardHeader title="我的机器" action="查看全部" onAction={onOpenMachines} />
-          {loading ? <LoadingBlock /> : <AgentTable agents={agents.slice(0, 5)} density="home" />}
+          {loading ? <LoadingBlock /> : <HomeAgentPanel agents={agents} />}
         </div>
         <div className="console-card report-card">
           <CardHeader title="最近任务" action="查看历史" onAction={onOpenHistory} />
@@ -711,6 +711,43 @@ function HomePage({
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+function HomeAgentPanel({ agents }: { agents: Agent[] }) {
+  const visibleAgents = agents.slice(0, 5);
+  const onlineAgents = agents.filter((agent) => agent.status === "ONLINE").length;
+  const offlineAgents = agents.filter((agent) => agent.status === "OFFLINE").length;
+  const latestHeartbeat = agents
+    .map((agent) => agent.last_heartbeat_at)
+    .filter(Boolean)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+  const composeAgents = agents.filter((agent) => agent.id.includes("compose") || agent.hostname.includes("compose")).length;
+
+  return (
+    <div className="home-agent-panel">
+      <AgentTable agents={visibleAgents} density="home" />
+      <div className="home-agent-summary">
+        <div>
+          <span>在线 / 总数</span>
+          <strong>
+            {onlineAgents}/{agents.length}
+          </strong>
+        </div>
+        <div>
+          <span>离线</span>
+          <strong>{offlineAgents}</strong>
+        </div>
+        <div>
+          <span>最近心跳</span>
+          <strong>{latestHeartbeat ? formatDate(latestHeartbeat) : "暂无"}</strong>
+        </div>
+        <div>
+          <span>Compose 探针</span>
+          <strong>{composeAgents}</strong>
+        </div>
+      </div>
     </div>
   );
 }
