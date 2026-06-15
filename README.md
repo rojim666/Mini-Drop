@@ -43,14 +43,14 @@ Make is also supported:
 make demo
 ```
 
-This compose stack starts PostgreSQL, MinIO, API Server, Agent, Web, and the
-bundled mock target. The Agent and API still share a local artifact volume for
-simple handoff; when the API returns artifact URLs it uploads the file to MinIO
-and returns a temporary signed URL.
+This compose stack starts five services: PostgreSQL, MinIO, API Server, Agent,
+and Web. The Agent and API share a local artifact volume for simple handoff;
+when the API returns artifact URLs it uploads the file to MinIO and returns a
+temporary signed URL.
 
 Then open:
 
-- Web UI: [http://localhost:4173](http://localhost:4173)
+- Web UI: [http://localhost](http://localhost)
 - API health: [http://localhost:8080/healthz](http://localhost:8080/healthz)
 - MinIO console: [http://localhost:9001](http://localhost:9001), login `minidrop` / `minidrop123`
 
@@ -63,11 +63,12 @@ MINIDROP_API_PORT=18080 MINIDROP_WEB_PORT=14173 MINIDROP_MINIO_PORT=19000 MINIDR
 
 The compose helpers print matching snapshot, evidence, checklist, submission,
 and final preflight commands with the same ports. Use those printed commands
-when the stack is not on the default `8080` / `4173` / `9000` ports.
+when the stack is not on the default `8080` / `80` / `9000` ports.
 
-For the compose-backed demo, use `PID 1` in the task form. The agent shares the
-PID namespace of the bundled `demo-target` container, so PID 1 is a stable mock
-workload for the end-to-end flow.
+For the compose-backed mock demo, use `PID 1` in the task form. The Agent
+shares the host PID namespace, so Linux/WSL2 can use real host PIDs for
+`collector_type=perf`; Windows Docker Desktop should use the default
+`mock-perf` collector.
 
 To verify the compose stack from the command line:
 
@@ -193,7 +194,7 @@ tasks, MinIO signed result URLs, whether the Web task-comparison page has at
 least two completed TopN-backed tasks to compare, and continuous profiling
 window/trend readiness.
 
-If `8080` or `4173` is already used by a local run, start the compose stack on
+If `8080` or `80` is already used by a local run, start the compose stack on
 alternate host ports:
 
 ```bash

@@ -25,13 +25,13 @@ page ready for a recording without extra manual setup.
 
 Open:
 
-- Web: <http://localhost:4173>
+- Web: <http://localhost>
 - API: <http://localhost:8080/healthz>
 - MinIO console: <http://localhost:9001>
 - MinIO login: `minidrop` / `minidrop123`
 
-Use `PID 1` in the Web form. The Agent shares the PID namespace of the bundled
-`demo-target` container, so PID 1 is the stable target process.
+Use `PID 1` in the Web form for the compose mock path. On Linux/WSL2, switch the
+collector to `perf` and use a real host PID such as `pgrep firefox`.
 
 If default ports are occupied:
 
@@ -41,7 +41,7 @@ If default ports are occupied:
 
 The script prints matching acceptance snapshot, evidence, recording checklist,
 submission notes, and final preflight commands with the same ports. Copy those
-printed commands when the stack is not using the default `8080` / `4173` /
+printed commands when the stack is not using the default `8080` / `80` /
 `9000` ports.
 
 For a faster startup that only creates one smoke task:
@@ -247,7 +247,7 @@ temporary `kernel.yama.ptrace_scope` adjustment.
 
 ## 4. Acceptance Checklist
 
-- Compose starts with PostgreSQL, MinIO, API, Agent, Web, and `demo-target`.
+- Compose starts with five healthy services: PostgreSQL, MinIO, API, Agent, and Web.
 - `make compose-health` reports `compose_stack=OK` with expected port mappings.
 - A mock task reaches `PENDING -> RUNNING -> UPLOADING -> DONE`.
 - `flamegraph_url` and `topn_url` contain `X-Amz-Signature` and the configured MinIO public port.

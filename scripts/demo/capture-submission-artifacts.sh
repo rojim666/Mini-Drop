@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-WEB_PORT="${MINIDROP_WEB_PORT:-4173}"
+WEB_PORT="${MINIDROP_WEB_PORT:-80}"
 MINIO_CONSOLE_PORT="${MINIDROP_MINIO_CONSOLE_PORT:-9001}"
 OUTPUT_DIR="${MINIDROP_SUBMISSION_SCREENSHOT_DIR:-artifacts/submission-screenshots}"
 EVIDENCE_PATH="${MINIDROP_DEMO_EVIDENCE_OUTPUT:-artifacts/demo-evidence.md}"

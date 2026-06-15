@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_API_PORT = os.environ.get("MINIDROP_API_PORT", "8080")
-DEFAULT_WEB_PORT = os.environ.get("MINIDROP_WEB_PORT", "4173")
+DEFAULT_WEB_PORT = os.environ.get("MINIDROP_WEB_PORT", "80")
 DEFAULT_MINIO_PORT = os.environ.get("MINIDROP_MINIO_PORT", "9000")
 DEFAULT_MINIO_CONSOLE_PORT = os.environ.get("MINIDROP_MINIO_CONSOLE_PORT", "9001")
 DEFAULT_EVIDENCE_PATH = os.environ.get("MINIDROP_DEMO_EVIDENCE_OUTPUT", "artifacts/demo-evidence.md")

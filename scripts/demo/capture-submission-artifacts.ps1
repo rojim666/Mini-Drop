@@ -1,5 +1,5 @@
 param(
-    [int]$WebPort = $(if ($env:MINIDROP_WEB_PORT) { [int]$env:MINIDROP_WEB_PORT } else { 4173 }),
+    [int]$WebPort = $(if ($env:MINIDROP_WEB_PORT) { [int]$env:MINIDROP_WEB_PORT } else { 80 }),
     [int]$MinioConsolePort = $(if ($env:MINIDROP_MINIO_CONSOLE_PORT) { [int]$env:MINIDROP_MINIO_CONSOLE_PORT } else { 9001 }),
     [string]$OutputDir = $(if ($env:MINIDROP_SUBMISSION_SCREENSHOT_DIR) { $env:MINIDROP_SUBMISSION_SCREENSHOT_DIR } else { "artifacts\submission-screenshots" }),
     [string]$EvidencePath = $(if ($env:MINIDROP_DEMO_EVIDENCE_OUTPUT) { $env:MINIDROP_DEMO_EVIDENCE_OUTPUT } else { "artifacts\demo-evidence.md" }),

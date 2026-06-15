@@ -123,7 +123,7 @@ go test ./apps/api-server ./apps/agent ./internal/...
 
 ```powershell
 .\scripts\demo\start-compose.ps1
-python scripts\demo\smoke_compose.py --pid 1 --agent-id agt_compose --expect-minio-url
+python scripts\demo\smoke_compose.py --pid 1 --agent-id drop_agent --expect-minio-url
 ```
 
 ## 阶段 6：eBPF 扩展

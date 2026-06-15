@@ -12,7 +12,7 @@ from playwright.async_api import async_playwright
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_WEB_PORT = "4173"
+DEFAULT_WEB_PORT = "80"
 DEFAULT_WEB_BASE = f"http://localhost:{DEFAULT_WEB_PORT}"
 DEFAULT_MINIO_CONSOLE_PORT = "9001"
 DEFAULT_MINIO_CONSOLE_BASE = f"http://localhost:{DEFAULT_MINIO_CONSOLE_PORT}"

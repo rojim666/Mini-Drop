@@ -69,7 +69,7 @@ Show:
 Show the Web dashboard:
 
 1. Confirm the left navigation and Tencent Cloud style console layout.
-2. Open `机器列表` and show the `compose-agent` heartbeat.
+2. Open `机器列表` and show the `drop-agent` heartbeat.
 3. Open `历史任务` and show at least two `DONE` tasks.
 4. Open one task detail and show:
    - status tag
@@ -89,7 +89,7 @@ Say:
 In Web, click `新建采样`:
 
 - Target PID: `1`
-- Target machine: `compose-agent` or automatic
+- Target machine: `drop-agent` or automatic
 - Duration: `15`
 - Frequency: `99`
 - Collector: `mock-perf`
@@ -140,7 +140,7 @@ Use one of these before recording, or show existing evidence if time is tight:
 
 ```powershell
 $env:MINIDROP_API_BASE_URL = "http://127.0.0.1:18080"
-python scripts\demo\smoke_compose.py --pid 999999 --agent-id agt_compose --expect-status FAILED --expect-reason-contains "target pid not found"
+python scripts\demo\smoke_compose.py --pid 999999 --agent-id drop_agent --expect-status FAILED --expect-reason-contains "target pid not found"
 ```
 
 Show:
