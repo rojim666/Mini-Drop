@@ -168,6 +168,7 @@ If WSL2 dependencies are later installed, run:
 ```bash
 make real-preflight
 make real-check
+make real-smoke-report
 COLLECTOR_TYPE=perf bash ./scripts/demo/start-local.sh
 make smoke-real COLLECTOR_TYPE=perf
 ```
@@ -187,6 +188,8 @@ Before finishing, show or mention:
 - `acceptance=OK` from `acceptance-snapshot`.
 - `Real collector readiness` from `final-preflight`, showing READY or the exact
   BLOCKED prerequisites.
+- `artifacts/real-smoke-report.md`, showing smoke READY/DONE or the current
+  BLOCKED reason.
 - `continuous_profiles` and `continuous_profile_samples` lines from
   `acceptance-snapshot`, including each profile's schedule policy.
 - `artifacts/demo-evidence.md`.

@@ -33,6 +33,7 @@ PYTHON_SYNTAX_FILES = [
     "scripts/demo/write_demo_evidence.py",
     "scripts/demo/write_recording_checklist.py",
     "scripts/demo/write_submission_notes.py",
+    "scripts/demo/write_real_smoke_report.py",
     "scripts/demo/capture_submission_artifacts.py",
     "scripts/demo/run_final_preflight.py",
     "scripts/demo/check_coverage.py",
@@ -186,7 +187,7 @@ def seed_failure_task(agent_id: str, env: dict[str, str]) -> StepResult:
     )
 
 
-def check_real_collector_readiness(collectors: str, target_pid: int, env: dict[str, str]) -> StepResult:
+def check_real_collector_readiness(collectors: str, env: dict[str, str]) -> StepResult:
     ps_args = [
         "powershell",
         "-NoProfile",
@@ -199,8 +200,6 @@ def check_real_collector_readiness(collectors: str, target_pid: int, env: dict[s
         "-Output",
         str(ROOT / "artifacts" / "real-collector-preflight.md"),
     ]
-    if target_pid > 0:
-        ps_args.extend(["-Pid", str(target_pid)])
 
     direct_args = [
         sys.executable,
@@ -210,9 +209,6 @@ def check_real_collector_readiness(collectors: str, target_pid: int, env: dict[s
         "--output",
         str(ROOT / "artifacts" / "real-collector-preflight.md"),
     ]
-    if target_pid > 0:
-        direct_args.extend(["--pid", str(target_pid)])
-
     args = ps_args if os.name == "nt" else direct_args
     result = run_command("Real collector readiness", args, required=False, env=env, timeout=180)
     if result.code != 0:
@@ -221,6 +217,45 @@ def check_real_collector_readiness(collectors: str, target_pid: int, env: dict[s
             for part in [
                 result.output,
                 "Real collectors are BLOCKED on this host. This is allowed for the Windows compose recording path when the generated report lists the missing Linux/WSL2 tools or permissions.",
+            ]
+            if part
+        )
+    return result
+
+
+def check_real_smoke_report(collectors: str, env: dict[str, str]) -> StepResult:
+    ps_args = [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(ROOT / "scripts" / "demo" / "write-real-smoke-report.ps1"),
+        "-Collectors",
+        collectors,
+        "-Output",
+        str(ROOT / "artifacts" / "real-smoke-report.md"),
+        "-SkipSmoke",
+    ]
+    direct_args = [
+        sys.executable,
+        str(ROOT / "scripts" / "demo" / "write_real_smoke_report.py"),
+        "--collectors",
+        collectors,
+        "--output",
+        str(ROOT / "artifacts" / "real-smoke-report.md"),
+        "--skip-smoke",
+        "--allow-blocked",
+    ]
+
+    args = ps_args if os.name == "nt" else direct_args
+    result = run_command("Real smoke report", args, required=False, env=env, timeout=180)
+    if result.code != 0:
+        result.output = "\n".join(
+            part
+            for part in [
+                result.output,
+                "Real smoke report generation is non-blocking for the Windows compose recording path.",
             ]
             if part
         )
@@ -412,7 +447,8 @@ def main() -> int:
     )
 
     if args.include_real_preflight:
-        results.append(check_real_collector_readiness(args.real_collectors, args.target_pid, env))
+        results.append(check_real_collector_readiness(args.real_collectors, env))
+        results.append(check_real_smoke_report(args.real_collectors, env))
 
     if not args.skip_tests:
         test_env = env.copy()

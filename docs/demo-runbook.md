@@ -190,10 +190,16 @@ The script prints the target PID and writes it to `tmp/local-demo/target.pid`.
 Run the matching smoke helper:
 
 ```bash
+make real-smoke-report
 make smoke-real COLLECTOR_TYPE=perf
 make smoke-real COLLECTOR_TYPE=ebpf-syscall
 make smoke-real COLLECTOR_TYPE=py-spy
 ```
+
+`make real-smoke-report` writes `artifacts/real-smoke-report.md`. It records
+preflight status for the selected collectors and, when the Linux local stack is
+already running, can include the smoke command output. On Windows this report is
+allowed to be `BLOCKED`; it should still show the missing tool or permission.
 
 Stop:
 
@@ -208,6 +214,7 @@ Run preflight checks before creating a real collector task:
 ```bash
 make real-preflight
 make real-check
+make real-smoke-report
 python3 scripts/demo/check_perf_env.py --pid <target-pid>
 python3 scripts/demo/check_ebpf_env.py --pid <target-pid>
 python3 scripts/demo/check_pyspy_env.py --pid <target-pid>

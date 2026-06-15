@@ -354,6 +354,7 @@ Linux:
 ```bash
 make real-preflight
 make real-check
+make real-smoke-report
 python3 scripts/demo/check_perf_env.py
 python3 scripts/demo/check_perf_env.py --pid <target-pid>
 ```
@@ -369,6 +370,10 @@ It treats missing host dependencies as a generated `BLOCKED` report rather than
 a script crash; use `.\scripts\demo\prepare-real-collectors.ps1 -Strict` or
 `bash ./scripts/demo/prepare-real-collectors.sh --strict` when you want blocked
 collectors to fail CI.
+`make real-smoke-report` writes `artifacts/real-smoke-report.md`. By default it
+records preflight readiness and blocked reasons; after starting the Linux local
+demo, run `bash ./scripts/demo/write-real-smoke-report.sh --collectors perf`
+without `--skip-smoke` to include the real smoke command output.
 
 The smoke helper can also request the real collector:
 
@@ -632,6 +637,7 @@ Verified in the current Windows workspace:
 
 Requires WSL2 / Linux host validation:
 
+- `make real-smoke-report`
 - `make smoke-real COLLECTOR_TYPE=perf`
 - `make smoke-real COLLECTOR_TYPE=ebpf-syscall`
 - `make smoke-real COLLECTOR_TYPE=py-spy`
