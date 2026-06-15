@@ -3,6 +3,7 @@ import {
   AlertCircle,
   ActivitySquare,
   BrainCircuit,
+  CheckCircle2,
   ExternalLink,
   FolderOpen,
   GitCompareArrows,
@@ -57,6 +58,8 @@ const defaultWindowFilters: ContinuousWindowFilters & { range: WindowRangeKey } 
   limit: 24,
 };
 
+const LOGIN_STORAGE_KEY = "mini-drop-demo-authenticated";
+
 const defaultTaskInput: CreateTaskInput = {
   target_pid: 1,
   sample_duration_sec: 15,
@@ -92,6 +95,7 @@ function readNavFromHash(): NavKey {
 }
 
 function App() {
+  const [authenticated, setAuthenticated] = useState(() => window.localStorage.getItem(LOGIN_STORAGE_KEY) === "1");
   const [activeNav, setActiveNavState] = useState<NavKey>(readNavFromHash());
   const [agents, setAgents] = useState<Agent[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -337,12 +341,31 @@ function App() {
 
   const showDropLandingLoader = activeNav === "home" && loading && agents.length === 0 && tasks.length === 0;
 
+  function handleLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    window.localStorage.setItem(LOGIN_STORAGE_KEY, "1");
+    setAuthenticated(true);
+    if (!window.location.hash) {
+      window.history.replaceState(null, "", "#home");
+    }
+  }
+
+  function handleLogout() {
+    window.localStorage.removeItem(LOGIN_STORAGE_KEY);
+    setAuthenticated(false);
+  }
+
+  if (!authenticated) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
+
   return (
     <div className="drop-app">
       <TopNav
         activeNav={activeNav}
         setActiveNav={setActiveNav}
         onCreateTask={() => setCreateDialogOpen(true)}
+        onLogout={handleLogout}
       />
 
       <div className="console-layout">
@@ -500,14 +523,65 @@ function DropLandingLoader() {
   );
 }
 
+function LoginPage({ onLogin }: { onLogin: (event: React.FormEvent<HTMLFormElement>) => void }) {
+  return (
+    <main className="login-shell">
+      <section className="login-card">
+        <div className="login-brand">
+          <span className="brand-mark">
+            <ActivitySquare size={22} />
+          </span>
+          <div>
+            <strong>Mini-Drop</strong>
+            <span>性能优化平台</span>
+          </div>
+        </div>
+        <div className="login-copy">
+          <h1>登录</h1>
+          <p>进入端到端性能采样工作台，创建任务、查看 Agent、下载 perf.data 并审阅火焰图与归因建议。</p>
+        </div>
+        <form className="login-form" onSubmit={onLogin}>
+          <label>
+            <span>用户名</span>
+            <input type="text" defaultValue="demo" />
+          </label>
+          <label>
+            <span>密码</span>
+            <input type="password" defaultValue="minidrop" />
+          </label>
+          <button className="primary-button" type="submit">
+            登录控制台
+          </button>
+        </form>
+        <div className="login-checklist">
+          <div>
+            <CheckCircle2 size={15} />
+            <span>Docker Compose E2E</span>
+          </div>
+          <div>
+            <CheckCircle2 size={15} />
+            <span>Agent 心跳与任务状态机</span>
+          </div>
+          <div>
+            <CheckCircle2 size={15} />
+            <span>火焰图与规则归因</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function TopNav({
   activeNav,
   setActiveNav,
   onCreateTask,
+  onLogout,
 }: {
   activeNav: NavKey;
   setActiveNav: (key: NavKey) => void;
   onCreateTask: () => void;
+  onLogout: () => void;
 }) {
   return (
     <header className="top-nav">
@@ -542,7 +616,9 @@ function TopNav({
         <button type="button" className="top-action secondary" onClick={() => setActiveNav("compare")}>
           用户组
         </button>
-        <span className="top-user">未登录</span>
+        <button type="button" className="top-action secondary" onClick={onLogout}>
+          退出
+        </button>
         <button type="button" className="top-action primary" onClick={onCreateTask}>
           <ActivitySquare size={14} />
           新建采样
@@ -723,7 +799,7 @@ function HomeAgentPanel({ agents }: { agents: Agent[] }) {
     .map((agent) => agent.last_heartbeat_at)
     .filter(Boolean)
     .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
-  const composeAgents = agents.filter((agent) => agent.id.includes("compose") || agent.hostname.includes("compose")).length;
+  const dropAgents = agents.filter((agent) => agent.id === "drop_agent" || agent.hostname.includes("drop-agent")).length;
 
   return (
     <div className="home-agent-panel">
@@ -744,8 +820,8 @@ function HomeAgentPanel({ agents }: { agents: Agent[] }) {
           <strong>{latestHeartbeat ? formatDate(latestHeartbeat) : "暂无"}</strong>
         </div>
         <div>
-          <span>Compose 探针</span>
-          <strong>{composeAgents}</strong>
+          <span>Drop Agent</span>
+          <strong>{dropAgents}</strong>
         </div>
       </div>
     </div>
@@ -886,7 +962,7 @@ function FilesPage({ selectedTask, tasks }: { selectedTask: Task | null; tasks: 
               doneTasks.map((task) => (
                 <tr key={task.id}>
                   <td>{task.id}</td>
-                  <td>{task.raw_artifact_url ? <ArtifactLink href={task.raw_artifact_url} label="raw" /> : "-"}</td>
+                  <td>{task.raw_artifact_url ? <ArtifactLink href={task.raw_artifact_url} label={rawArtifactLabel(task)} /> : "-"}</td>
                   <td>
                     {task.id === selectedTask?.id && selectedTask.result?.flamegraph_url ? (
                       <ArtifactLink href={selectedTask.result.flamegraph_url} label="flamegraph.svg" />
@@ -1958,99 +2034,105 @@ function TaskDetail({ task }: { task: Task | null }) {
         </button>
       </div>
 
-      {activeTab === "basic" ? (
-        <div className="basic-layout">
-          <dl className="info-list">
-            <div>
-              <dt>目标 PID</dt>
-              <dd>{task.target_pid}</dd>
-            </div>
-            <div>
-              <dt>目标机器</dt>
-              <dd>{task.target_agent_id}</dd>
-            </div>
-            <div>
-              <dt>采样参数</dt>
-              <dd>
-                {task.sample_rate_hz}Hz / {task.sample_duration_sec}s
-              </dd>
-            </div>
-            <div>
-              <dt>状态原因</dt>
-              <dd>{task.status_reason}</dd>
-            </div>
-          </dl>
-          <div className="event-list">
-            <h3>状态历史</h3>
-            {(task.events ?? []).map((event) => (
-              <div className="event-item" key={event.id}>
-                <span>{event.to_status}</span>
-                <p>{event.reason}</p>
-                <time>{formatDate(event.created_at)}</time>
+      <div className="task-detail-body">
+        <section className="task-detail-main">
+          {activeTab === "basic" ? (
+            <div className="basic-layout">
+              <dl className="info-list">
+                <div>
+                  <dt>目标 PID</dt>
+                  <dd>{task.target_pid}</dd>
+                </div>
+                <div>
+                  <dt>目标机器</dt>
+                  <dd>{task.target_agent_id}</dd>
+                </div>
+                <div>
+                  <dt>采样参数</dt>
+                  <dd>
+                    {task.sample_rate_hz}Hz / {task.sample_duration_sec}s
+                  </dd>
+                </div>
+                <div>
+                  <dt>状态原因</dt>
+                  <dd>{task.status_reason}</dd>
+                </div>
+              </dl>
+              <div className="event-list">
+                <h3>状态历史</h3>
+                {(task.events ?? []).map((event) => (
+                  <div className="event-item" key={event.id}>
+                    <span>{event.to_status}</span>
+                    <p>{event.reason}</p>
+                    <time>{formatDate(event.created_at)}</time>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
+            </div>
+          ) : null}
 
-      {activeTab === "flame" ? (
-        task.result?.flamegraph_url ? (
-          <object className="flame-frame" data={task.result.flamegraph_url} type="image/svg+xml">
-            火焰图加载失败
-          </object>
-        ) : (
-          <EmptyBlock text="任务完成后会展示火焰图。" />
-        )
-      ) : null}
+          {activeTab === "flame" ? (
+            task.result?.flamegraph_url ? (
+              <object className="flame-frame" data={task.result.flamegraph_url} type="image/svg+xml">
+                火焰图加载失败
+              </object>
+            ) : (
+              <EmptyBlock text="任务完成后会展示火焰图。" />
+            )
+          ) : null}
 
-      {activeTab === "hotspots" ? (
-        task.result?.hotspots?.length ? (
-          <table className="data-table compact">
-            <thead>
-              <tr>
-                <th>{task.collector_type === "ebpf-syscall" ? "系统调用" : "函数"}</th>
-                <th>{task.collector_type === "ebpf-syscall" ? "次数" : "样本数"}</th>
-                <th>占比</th>
-              </tr>
-            </thead>
-            <tbody>
-              {task.result.hotspots.map((hotspot) => (
-                <tr key={hotspot.function}>
-                  <td>{hotspot.function}</td>
-                  <td>{hotspot.samples}</td>
-                  <td>{hotspot.percent}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <EmptyBlock text="任务完成后会展示 TopN 热点。" />
-        )
-      ) : null}
+          {activeTab === "hotspots" ? (
+            task.result?.hotspots?.length ? (
+              <table className="data-table compact">
+                <thead>
+                  <tr>
+                    <th>{task.collector_type === "ebpf-syscall" ? "系统调用" : "函数"}</th>
+                    <th>{task.collector_type === "ebpf-syscall" ? "次数" : "样本数"}</th>
+                    <th>占比</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {task.result.hotspots.map((hotspot) => (
+                    <tr key={hotspot.function}>
+                      <td>{hotspot.function}</td>
+                      <td>{hotspot.samples}</td>
+                      <td>{hotspot.percent}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <EmptyBlock text="任务完成后会展示 TopN 热点。" />
+            )
+          ) : null}
 
-      {activeTab === "ebpf" ? (
-        task.result?.hotspots?.length ? (
-          <EBPFDistributionPanel task={task} />
-        ) : (
-          <EmptyBlock text="eBPF 任务完成后会展示系统调用分布。" />
-        )
-      ) : null}
+          {activeTab === "ebpf" ? (
+            task.result?.hotspots?.length ? (
+              <EBPFDistributionPanel task={task} />
+            ) : (
+              <EmptyBlock text="eBPF 任务完成后会展示系统调用分布。" />
+            )
+          ) : null}
 
-      {activeTab === "pyspy" ? (
-        task.result?.hotspots?.length ? (
-          <PySpyPanel task={task} />
-        ) : (
-          <EmptyBlock text="py-spy 任务完成后会展示 Python 用户态栈。" />
-        )
-      ) : null}
+          {activeTab === "pyspy" ? (
+            task.result?.hotspots?.length ? (
+              <PySpyPanel task={task} />
+            ) : (
+              <EmptyBlock text="py-spy 任务完成后会展示 Python 用户态栈。" />
+            )
+          ) : null}
 
-      {activeTab === "attribution" ? (
-        task.result?.attribution ? (
-          <AttributionPanel attribution={task.result.attribution} />
-        ) : (
-          <EmptyBlock text="任务完成后会展示归因建议。" />
-        )
-      ) : null}
+          {activeTab === "attribution" ? (
+            task.result?.attribution ? (
+              <AttributionPanel attribution={task.result.attribution} />
+            ) : (
+              <EmptyBlock text="任务完成后会展示归因建议。" />
+            )
+          ) : null}
+        </section>
+
+        <TaskAdviceRail task={task} />
+      </div>
     </div>
   );
 }
@@ -2091,6 +2173,76 @@ function PySpyPanel({ task }: { task: Task }) {
       </table>
     </div>
   );
+}
+
+function TaskAdviceRail({ task }: { task: Task }) {
+  const attribution = task.result?.attribution;
+  const recommendations = attribution?.recommendations ?? [];
+  const topHotspot = task.result?.hotspots?.[0];
+
+  return (
+    <aside className="task-advice-rail">
+      <div className="task-advice-head">
+        <div className="attribution-icon">
+          <BrainCircuit size={18} />
+        </div>
+        <div>
+          <span>AI / 规则建议</span>
+          <strong>{attribution?.conclusion ?? adviceFallbackTitle(task)}</strong>
+        </div>
+      </div>
+
+      <dl className="advice-kv">
+        <div>
+          <dt>置信度</dt>
+          <dd>{attribution ? `${Math.round(attribution.confidence * 100)}%` : "-"}</dd>
+        </div>
+        <div>
+          <dt>Top 热点</dt>
+          <dd>{topHotspot ? `${topHotspot.function} / ${topHotspot.percent}%` : "-"}</dd>
+        </div>
+        <div>
+          <dt>原始产物</dt>
+          <dd>
+            <ArtifactLink href={task.raw_artifact_url ?? ""} label={rawArtifactLabel(task)} />
+          </dd>
+        </div>
+      </dl>
+
+      <div className="advice-list">
+        {recommendations.length ? (
+          recommendations.slice(0, 4).map((item, index) => (
+            <div className="advice-item" key={item}>
+              <span>{index + 1}</span>
+              <p>{item}</p>
+            </div>
+          ))
+        ) : (
+          <div className="advice-empty">{adviceFallbackText(task)}</div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function adviceFallbackTitle(task: Task) {
+  if (task.status === "DONE") {
+    return "分析完成，等待规则结果刷新";
+  }
+  if (task.status === "FAILED") {
+    return "任务失败，请先处理采集条件";
+  }
+  return "采样链路执行中";
+}
+
+function adviceFallbackText(task: Task) {
+  if (task.status === "FAILED") {
+    return task.status_reason || "检查 PID、Agent 在线状态、采集器权限和命令是否可用。";
+  }
+  if (task.status === "DONE") {
+    return "火焰图和 TopN 已生成；若建议暂未出现，请等待下一次详情刷新。";
+  }
+  return "任务完成后会在这里显示规则归因、证据摘要和优化建议。";
 }
 
 function EBPFDistributionPanel({ task }: { task: Task }) {
@@ -2346,6 +2498,19 @@ function ArtifactLink({ href, label }: { href: string; label: string }) {
       <ExternalLink size={13} />
     </a>
   );
+}
+
+function rawArtifactLabel(task: Task) {
+  if (task.collector_type === "perf") {
+    return "perf.data";
+  }
+  if (task.collector_type === "ebpf-syscall") {
+    return "ebpf.syscalls.txt";
+  }
+  if (task.collector_type === "py-spy") {
+    return "pyspy.raw.txt";
+  }
+  return "mock.perf.data.json";
 }
 
 function LoadingBlock() {
