@@ -697,6 +697,60 @@ function LoginPage({ onLogin }: { onLogin: (event: React.FormEvent<HTMLFormEleme
             </div>
           </div>
         </section>
+
+        <aside className="login-ops-rail" aria-label="演示验收信息">
+          <section className="login-ops-card">
+            <div className="login-ops-head">
+              <Timer size={17} />
+              <div>
+                <strong>端到端验证</strong>
+                <span>Compose demo checklist</span>
+              </div>
+            </div>
+            <div className="login-step-list">
+              <div className="login-step-item active">
+                <CheckCircle2 size={14} />
+                <span>5 个服务 healthy</span>
+              </div>
+              <div className="login-step-item active">
+                <CheckCircle2 size={14} />
+                <span>drop_agent 在线</span>
+              </div>
+              <div className="login-step-item">
+                <ActivitySquare size={14} />
+                <span>创建 CPU 采样任务</span>
+              </div>
+              <div className="login-step-item">
+                <BrainCircuit size={14} />
+                <span>AI 归因建议展示</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="login-ops-card">
+            <div className="login-ops-head">
+              <Monitor size={17} />
+              <div>
+                <strong>访问端点</strong>
+                <span>Local compose runtime</span>
+              </div>
+            </div>
+            <dl className="login-endpoint-list">
+              <div>
+                <dt>Web</dt>
+                <dd>localhost:14173</dd>
+              </div>
+              <div>
+                <dt>API</dt>
+                <dd>localhost:18080</dd>
+              </div>
+              <div>
+                <dt>MinIO</dt>
+                <dd>localhost:19000</dd>
+              </div>
+            </dl>
+          </section>
+        </aside>
       </section>
 
       <footer className="login-footer">
