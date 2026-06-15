@@ -528,19 +528,33 @@ usable when multiple Agents are running.
 ### Attribution mini-loop
 
 `GET /api/v1/tasks/:id/results` also returns an `attribution` object when
-`topn.json` is readable. The current implementation is a deterministic
-tool-driven attribution loop over TopN hotspots, rule matches, sampling
-parameters, and seeded baseline rows. It returns a conclusion, confidence,
-evidence list, recommendations, source metadata, prompt text, and tool trace so
-the Web detail page can show a reproducible "归因建议" tab.
+`topn.json` is readable. The API first builds a deterministic, tool-driven
+evidence packet over TopN hotspots, rule matches, sampling parameters, seeded
+baseline rows, and the resource timeline. If `MINIDROP_AI_API_KEY` is
+configured, the API then calls an OpenAI-compatible chat completions endpoint
+and asks the model to produce a concise JSON conclusion, confidence, and
+recommendations using only that evidence.
 
-This is intentionally not a remote LLM call yet. The prompt and tool trace are
-persisted in SQLite as the auditable contract that a later LLM loop can reuse.
-The built-in tools are `get_top_hotspots(task_id)`,
-`match_hotspot_rules(topn)`, `compare_with_baseline(task_id)`, and
-`get_resource_timeline(task_id)`. The resource timeline tool currently produces
-deterministic demo evidence for CPU / IO / memory / wait alignment; it is the
-contract that a later real metrics source can replace.
+If the model is not configured, times out, or returns invalid JSON, Mini-Drop
+keeps the deterministic rule attribution and records `analysis_engine=rule`
+plus `fallback_reason` when applicable. The Web detail page shows whether a
+result came from real AI or the rule fallback. The built-in tools are
+`get_top_hotspots(task_id)`, `match_hotspot_rules(topn)`,
+`compare_with_baseline(task_id)`, `get_resource_timeline(task_id)`, and
+`call_ai_model(model)`.
+
+To enable real AI attribution:
+
+```powershell
+$env:MINIDROP_AI_ENABLED = "true"
+$env:MINIDROP_AI_API_KEY = "<your-key>"
+$env:MINIDROP_AI_MODEL = "gpt-4o-mini"
+$env:MINIDROP_AI_BASE_URL = "https://api.openai.com/v1"
+.\scripts\demo\start-compose.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
+```
+
+Any OpenAI-compatible provider can be used by changing `MINIDROP_AI_BASE_URL`
+and `MINIDROP_AI_MODEL`.
 
 The task comparison page also aggregates TopN hotspots across completed tasks,
 showing recurring functions, coverage, average percent, peak percent, total

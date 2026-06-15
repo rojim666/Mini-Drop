@@ -2,6 +2,7 @@ package apiserver
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -190,6 +191,9 @@ type resourceTimelinePayload struct {
 type attributionPayload struct {
 	Conclusion       string                       `json:"conclusion"`
 	Confidence       float64                      `json:"confidence"`
+	AnalysisEngine   string                       `json:"analysis_engine"`
+	Model            string                       `json:"model,omitempty"`
+	FallbackReason   string                       `json:"fallback_reason,omitempty"`
 	Evidence         []attributionEvidencePayload `json:"evidence"`
 	Recommendations  []string                     `json:"recommendations"`
 	Source           attributionSourcePayload     `json:"source"`
@@ -1607,11 +1611,13 @@ func (s *Service) loadOrBuildAttribution(task minidrop.Task, topNPath string, re
 	if err := s.db.First(&existing, "task_id = ?", task.ID).Error; err == nil {
 		hasRecord = true
 		payload, decodeErr := attributionPayloadFromRecord(existing)
-		if decodeErr == nil && payload.ResourceTimeline != nil {
+		if decodeErr == nil && payload.ResourceTimeline != nil && !s.shouldRebuildAttribution(payload) {
 			return payload
 		}
 		if decodeErr != nil {
 			s.log.Warn("decode persisted attribution failed", "task_id", task.ID, "error", decodeErr)
+		} else if s.shouldRebuildAttribution(payload) {
+			s.log.Info("rebuilding attribution with configured AI engine", "task_id", task.ID, "engine", payload.AnalysisEngine)
 		} else {
 			s.log.Info("rebuilding attribution with resource timeline", "task_id", task.ID)
 		}
@@ -1635,6 +1641,7 @@ func (s *Service) loadOrBuildAttribution(task minidrop.Task, topNPath string, re
 	}
 
 	payload := buildAttributionWithBaselinesAndTimeline(task, topNPath, hotspots, baselines, timeline, resourceTimelinePath)
+	payload = s.buildAIAttribution(task, payload, hotspots)
 	now := time.Now().UTC()
 	record, buildErr := attributionRecordFromPayload(task.ID, payload, now)
 	if buildErr != nil {
@@ -1660,6 +1667,40 @@ func (s *Service) loadOrBuildAttribution(task minidrop.Task, topNPath string, re
 	}
 	payload.PersistedAt = &record.CreatedAt
 	return payload
+}
+
+func (s *Service) shouldRebuildAttribution(payload *attributionPayload) bool {
+	if payload == nil || payload.ResourceTimeline == nil {
+		return true
+	}
+	if s.ai == nil {
+		return false
+	}
+	return payload.AnalysisEngine != "ai" || payload.Model != s.ai.model
+}
+
+func (s *Service) buildAIAttribution(task minidrop.Task, rulePayload *attributionPayload, hotspots []hotspotPayload) *attributionPayload {
+	if s.ai == nil {
+		return rulePayload
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.AITimeout)
+	defer cancel()
+
+	aiPayload, err := s.ai.Analyze(ctx, task, rulePayload, hotspots)
+	if err != nil {
+		s.log.Warn("AI attribution failed; falling back to rules", "task_id", task.ID, "model", s.cfg.AIModel, "error", err)
+		rulePayload.AnalysisEngine = "rule"
+		rulePayload.Model = s.cfg.AIModel
+		rulePayload.FallbackReason = err.Error()
+		rulePayload.ToolTrace = append(rulePayload.ToolTrace, attributionToolCallPayload{
+			Name:   "call_ai_model",
+			Input:  fmt.Sprintf("model=%s", s.cfg.AIModel),
+			Output: "fallback_to_rule: " + err.Error(),
+		})
+		return rulePayload
+	}
+	return aiPayload
 }
 
 func (s *Service) writeError(c *gin.Context, status int, err error) {

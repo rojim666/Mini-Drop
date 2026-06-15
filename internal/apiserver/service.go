@@ -29,6 +29,7 @@ type Service struct {
 	router  *gin.Engine
 	log     *slog.Logger
 	storage *artifactStorage
+	ai      *aiAttributionClient
 	once    sync.Once
 }
 
@@ -81,6 +82,7 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 		db:      sqlDB,
 		log:     slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})),
 		storage: storage,
+		ai:      newAIAttributionClient(cfg),
 	}
 	service.router = service.newRouter()
 	service.startBackground(ctx)

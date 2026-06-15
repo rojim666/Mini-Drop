@@ -76,6 +76,9 @@ type AttributionResult struct {
 	TaskID               string    `gorm:"size:64;not null;uniqueIndex"`
 	Conclusion           string    `gorm:"size:2048;not null"`
 	Confidence           float64   `gorm:"not null"`
+	AnalysisEngine       string    `gorm:"size:64;not null;default:rule"`
+	Model                string    `gorm:"size:128"`
+	FallbackReason       string    `gorm:"size:1024"`
 	EvidenceJSON         string    `gorm:"type:text;not null"`
 	RecommendationsJSON  string    `gorm:"type:text;not null"`
 	SourceJSON           string    `gorm:"type:text;not null"`

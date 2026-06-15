@@ -2187,12 +2187,16 @@ function TaskAdviceRail({ task }: { task: Task }) {
           <BrainCircuit size={18} />
         </div>
         <div>
-          <span>AI / 规则建议</span>
+          <span>{attributionSourceLabel(attribution)}</span>
           <strong>{attribution?.conclusion ?? adviceFallbackTitle(task)}</strong>
         </div>
       </div>
 
       <dl className="advice-kv">
+        <div>
+          <dt>来源</dt>
+          <dd>{attributionSourceDetail(attribution)}</dd>
+        </div>
         <div>
           <dt>置信度</dt>
           <dd>{attribution ? `${Math.round(attribution.confidence * 100)}%` : "-"}</dd>
@@ -2243,6 +2247,26 @@ function adviceFallbackText(task: Task) {
     return "火焰图和 TopN 已生成；若建议暂未出现，请等待下一次详情刷新。";
   }
   return "任务完成后会在这里显示规则归因、证据摘要和优化建议。";
+}
+
+function attributionSourceLabel(attribution?: NonNullable<NonNullable<Task["result"]>["attribution"]> | null) {
+  if (!attribution) {
+    return "AI / 规则建议";
+  }
+  return attribution.analysis_engine === "ai" ? "真实 AI 分析" : "规则兜底分析";
+}
+
+function attributionSourceDetail(attribution?: NonNullable<NonNullable<Task["result"]>["attribution"]> | null) {
+  if (!attribution) {
+    return "-";
+  }
+  if (attribution.analysis_engine === "ai") {
+    return attribution.model ? `AI · ${attribution.model}` : "AI";
+  }
+  if (attribution.fallback_reason) {
+    return `规则兜底 · ${attribution.model || "AI 未配置"}`;
+  }
+  return "规则兜底";
 }
 
 function EBPFDistributionPanel({ task }: { task: Task }) {
@@ -2298,7 +2322,7 @@ function AttributionPanel({ attribution }: { attribution: NonNullable<Task["resu
           <strong>{attribution.conclusion}</strong>
         </div>
         <div className="confidence-meter">
-          <span>置信度</span>
+          <span>{attributionSourceDetail(attribution)}</span>
           <strong>{Math.round(attribution.confidence * 100)}%</strong>
         </div>
       </div>

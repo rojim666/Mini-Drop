@@ -27,6 +27,12 @@ type Config struct {
 	MinIOPresignTTL        time.Duration
 	AllowedOrigin          string
 	AgentAllowlist         []string
+	AIEnabled              bool
+	AIBaseURL              string
+	AIAPIKey               string
+	AIModel                string
+	AITimeout              time.Duration
+	AIMaxTokens            int
 	OfflineAfter           time.Duration
 	OfflineCheckInterval   time.Duration
 	ContinuousScanInterval time.Duration
@@ -59,6 +65,12 @@ func LoadConfigFromEnv() (Config, error) {
 		MinIOPresignTTL:        durationFromEnv("MINIDROP_MINIO_PRESIGN_TTL_SEC", 900),
 		AllowedOrigin:          getenv("MINIDROP_ALLOWED_ORIGIN", "http://127.0.0.1:5173"),
 		AgentAllowlist:         splitCSV(getenv("MINIDROP_AGENT_ALLOWLIST", "")),
+		AIEnabled:              boolFromEnv("MINIDROP_AI_ENABLED", os.Getenv("MINIDROP_AI_API_KEY") != ""),
+		AIBaseURL:              getenv("MINIDROP_AI_BASE_URL", "https://api.openai.com/v1"),
+		AIAPIKey:               getenv("MINIDROP_AI_API_KEY", ""),
+		AIModel:                getenv("MINIDROP_AI_MODEL", "gpt-4o-mini"),
+		AITimeout:              durationFromEnv("MINIDROP_AI_TIMEOUT_SEC", 20),
+		AIMaxTokens:            intFromEnv("MINIDROP_AI_MAX_TOKENS", 800),
 		OfflineAfter:           durationFromEnv("MINIDROP_OFFLINE_AFTER_SEC", 30),
 		OfflineCheckInterval:   durationFromEnv("MINIDROP_OFFLINE_SCAN_SEC", 10),
 		ContinuousScanInterval: durationFromEnv("MINIDROP_CONTINUOUS_SCAN_SEC", 60),
@@ -89,6 +101,18 @@ func (cfg Config) withDefaults() Config {
 	}
 	if cfg.MinIOPresignTTL <= 0 {
 		cfg.MinIOPresignTTL = 15 * time.Minute
+	}
+	if cfg.AIBaseURL == "" {
+		cfg.AIBaseURL = "https://api.openai.com/v1"
+	}
+	if cfg.AIModel == "" {
+		cfg.AIModel = "gpt-4o-mini"
+	}
+	if cfg.AITimeout <= 0 {
+		cfg.AITimeout = 20 * time.Second
+	}
+	if cfg.AIMaxTokens <= 0 {
+		cfg.AIMaxTokens = 800
 	}
 	if cfg.OfflineAfter <= 0 {
 		cfg.OfflineAfter = 30 * time.Second
@@ -133,15 +157,19 @@ func splitCSV(raw string) []string {
 }
 
 func durationFromEnv(key string, fallbackSeconds int) time.Duration {
+	return time.Duration(intFromEnv(key, fallbackSeconds)) * time.Second
+}
+
+func intFromEnv(key string, fallback int) int {
 	value := getenv(key, "")
 	if value == "" {
-		return time.Duration(fallbackSeconds) * time.Second
+		return fallback
 	}
 
-	seconds, err := strconv.Atoi(value)
-	if err != nil || seconds <= 0 {
-		return time.Duration(fallbackSeconds) * time.Second
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
 	}
 
-	return time.Duration(seconds) * time.Second
+	return parsed
 }

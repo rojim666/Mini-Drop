@@ -59,6 +59,9 @@ export interface ResourceTimeline {
 export interface AttributionResult {
   conclusion: string;
   confidence: number;
+  analysis_engine: "ai" | "rule" | string;
+  model?: string;
+  fallback_reason?: string;
   evidence: AttributionEvidence[];
   recommendations: string[];
   source: AttributionSource;
