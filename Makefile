@@ -1,4 +1,4 @@
-.PHONY: help demo demo-up demo-down local local-down test build web-build coverage docs-check smoke-local smoke-real smoke-demo smoke-demo-minio smoke-demo-fail smoke-demo-offline compose-health acceptance-snapshot demo-evidence recording-checklist submission-notes capture-submission-artifacts final-preflight real-preflight real-check real-smoke-report perf-check ebpf-check pyspy-check
+.PHONY: help demo demo-up demo-down local local-down test build web-build coverage attribution-evaluation docs-check smoke-local smoke-real smoke-demo smoke-demo-minio smoke-demo-fail smoke-demo-offline compose-health acceptance-snapshot demo-evidence recording-checklist submission-notes capture-submission-artifacts final-preflight real-preflight real-check real-smoke-report perf-check ebpf-check pyspy-check
 
 help:
 	@echo "Mini-Drop commands:"
@@ -22,6 +22,7 @@ help:
 	@echo "  make local-down  Stop the local Linux/WSL demo stack"
 	@echo "  make test        Run Go tests"
 	@echo "  make coverage    Write artifacts/coverage-report.md and enforce required coverage gates"
+	@echo "  make attribution-evaluation  Write artifacts/attribution-evaluation-report.md"
 	@echo "  make build       Build Go binaries and the web app"
 	@echo "  make web-build   Build the web app only"
 	@echo "  make smoke-local Run the local smoke helper against a PID"
@@ -104,6 +105,9 @@ test:
 
 coverage:
 	@powershell -NoProfile -Command "$$env:GOPROXY='https://goproxy.cn,direct'; python scripts\\demo\\check_coverage.py"
+
+attribution-evaluation:
+	@powershell -NoProfile -Command "python scripts\\demo\\write_attribution_evaluation.py"
 
 build: web-build
 	@powershell -NoProfile -Command "$$env:GOPROXY='https://goproxy.cn,direct'; go build ./apps/api-server ./apps/agent"

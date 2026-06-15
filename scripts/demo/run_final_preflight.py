@@ -37,6 +37,7 @@ PYTHON_SYNTAX_FILES = [
     "scripts/demo/capture_submission_artifacts.py",
     "scripts/demo/run_final_preflight.py",
     "scripts/demo/check_coverage.py",
+    "scripts/demo/write_attribution_evaluation.py",
     "scripts/demo/demo_diagnostics.py",
     "scripts/demo/check_compose_stack.py",
 ]
@@ -350,7 +351,7 @@ def write_report(
             "",
             "- Start recording only when the overall status is `OK`.",
             "- If real collector preflight is included, `BLOCKED` in the evidence file is acceptable on Windows only when the Linux/WSL2 commands and next steps are shown.",
-            "- Keep `artifacts/demo-evidence.md`, `artifacts/coverage-report.md`, `artifacts/recording-checklist.md`, and `artifacts/submission-notes.md` open before the final walkthrough.",
+            "- Keep `artifacts/demo-evidence.md`, `artifacts/coverage-report.md`, `artifacts/attribution-evaluation-report.md`, `artifacts/recording-checklist.md`, and `artifacts/submission-notes.md` open before the final walkthrough.",
         ]
     )
 
@@ -478,6 +479,15 @@ def main() -> int:
                 required=True,
                 env=test_env,
                 timeout=240,
+            )
+        )
+        results.append(
+            run_command(
+                "Attribution evaluation",
+                [sys.executable, str(ROOT / "scripts" / "demo" / "write_attribution_evaluation.py")],
+                required=True,
+                env=test_env,
+                timeout=180,
             )
         )
         results.append(

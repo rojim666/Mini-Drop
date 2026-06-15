@@ -4,6 +4,7 @@ param(
     [int]$MinioPort = $(if ($env:MINIDROP_MINIO_PORT) { [int]$env:MINIDROP_MINIO_PORT } else { 9000 }),
     [int]$MinioConsolePort = $(if ($env:MINIDROP_MINIO_CONSOLE_PORT) { [int]$env:MINIDROP_MINIO_CONSOLE_PORT } else { 9001 }),
     [string]$EvidencePath = $(if ($env:MINIDROP_DEMO_EVIDENCE_OUTPUT) { $env:MINIDROP_DEMO_EVIDENCE_OUTPUT } else { "artifacts\demo-evidence.md" }),
+    [string]$AttributionEvaluationPath = $(if ($env:MINIDROP_ATTRIBUTION_EVALUATION_OUTPUT) { $env:MINIDROP_ATTRIBUTION_EVALUATION_OUTPUT } else { "artifacts\attribution-evaluation-report.md" }),
     [string]$Output = $(if ($env:MINIDROP_RECORDING_CHECKLIST_OUTPUT) { $env:MINIDROP_RECORDING_CHECKLIST_OUTPUT } else { "artifacts\recording-checklist.md" })
 )
 
@@ -28,7 +29,9 @@ $arguments = @(
     "--minio-console-port",
     ([string]$MinioConsolePort),
     "--evidence-path",
-    $EvidencePath
+    $EvidencePath,
+    "--attribution-evaluation-path",
+    $AttributionEvaluationPath
 )
 
 & python @arguments

@@ -8,6 +8,7 @@ WEB_PORT="${MINIDROP_WEB_PORT:-4173}"
 MINIO_PORT="${MINIDROP_MINIO_PORT:-9000}"
 MINIO_CONSOLE_PORT="${MINIDROP_MINIO_CONSOLE_PORT:-9001}"
 EVIDENCE_PATH="${MINIDROP_DEMO_EVIDENCE_OUTPUT:-artifacts/demo-evidence.md}"
+ATTRIBUTION_EVALUATION_PATH="${MINIDROP_ATTRIBUTION_EVALUATION_OUTPUT:-artifacts/attribution-evaluation-report.md}"
 
 python3 "$ROOT/scripts/demo/write_recording_checklist.py" \
   --output "$OUTPUT" \
@@ -15,4 +16,5 @@ python3 "$ROOT/scripts/demo/write_recording_checklist.py" \
   --web-port "$WEB_PORT" \
   --minio-port "$MINIO_PORT" \
   --minio-console-port "$MINIO_CONSOLE_PORT" \
-  --evidence-path "$EVIDENCE_PATH"
+  --evidence-path "$EVIDENCE_PATH" \
+  --attribution-evaluation-path "$ATTRIBUTION_EVALUATION_PATH"

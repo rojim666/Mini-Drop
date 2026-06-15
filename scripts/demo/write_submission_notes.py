@@ -10,9 +10,20 @@ DEFAULT_WEB_PORT = os.environ.get("MINIDROP_WEB_PORT", "4173")
 DEFAULT_MINIO_CONSOLE_PORT = os.environ.get("MINIDROP_MINIO_CONSOLE_PORT", "9001")
 DEFAULT_EVIDENCE_PATH = os.environ.get("MINIDROP_DEMO_EVIDENCE_OUTPUT", "artifacts/demo-evidence.md")
 DEFAULT_CHECKLIST_PATH = os.environ.get("MINIDROP_RECORDING_CHECKLIST_OUTPUT", "artifacts/recording-checklist.md")
+DEFAULT_ATTRIBUTION_EVALUATION_PATH = os.environ.get(
+    "MINIDROP_ATTRIBUTION_EVALUATION_OUTPUT",
+    "artifacts/attribution-evaluation-report.md",
+)
 
 
-def submission_lines(api_port: str, web_port: str, minio_console_port: str, evidence_path: str, checklist_path: str) -> list[str]:
+def submission_lines(
+    api_port: str,
+    web_port: str,
+    minio_console_port: str,
+    evidence_path: str,
+    checklist_path: str,
+    attribution_evaluation_path: str,
+) -> list[str]:
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     web_url = f"http://localhost:{web_port}"
     api_url = f"http://localhost:{api_port}/healthz"
@@ -43,6 +54,7 @@ def submission_lines(api_port: str, web_port: str, minio_console_port: str, evid
         f"- MinIO console: `{minio_url}`",
         f"- Evidence: `{evidence_path}`",
         f"- Recording checklist: `{checklist_path}`",
+        f"- Attribution evaluation: `{attribution_evaluation_path}`",
         "",
         "## Screenshot Manifest",
         "",
@@ -59,6 +71,7 @@ def submission_lines(api_port: str, web_port: str, minio_console_port: str, evid
             "- At least two completed TopN-backed tasks are available for comparison.",
             "- MinIO signed URLs include `X-Amz-Signature` on the Compose path.",
             "- Continuous profiling evidence includes schedule policy and sampled windows.",
+            "- Attribution evaluation report shows six samples with weighted criterion scores.",
             "- Failure path shows a clear `status_reason` and status history.",
             "- Coverage report shows required gates at or above 50%.",
             "- Real collector preflight is either READY or BLOCKED with concrete next commands.",
@@ -70,7 +83,8 @@ def submission_lines(api_port: str, web_port: str, minio_console_port: str, evid
             "python -m unittest apps.analyzer.main_test",
             "npm --prefix apps\\web run build",
             "python scripts\\demo\\check_coverage.py",
-            "python -m py_compile scripts\\demo\\acceptance_snapshot.py scripts\\demo\\write_demo_evidence.py scripts\\demo\\write_recording_checklist.py scripts\\demo\\write_submission_notes.py",
+            "python scripts\\demo\\write_attribution_evaluation.py",
+            "python -m py_compile scripts\\demo\\acceptance_snapshot.py scripts\\demo\\write_demo_evidence.py scripts\\demo\\write_recording_checklist.py scripts\\demo\\write_submission_notes.py scripts\\demo\\write_attribution_evaluation.py",
             "```",
             "",
             "## Commit Summary Template",
@@ -79,7 +93,7 @@ def submission_lines(api_port: str, web_port: str, minio_console_port: str, evid
             "- Compose delivery path: PostgreSQL, MinIO signed URLs, smoke tasks, and evidence scripts are wired.",
             "- Real collectors: perf, eBPF syscall, and py-spy code paths are implemented with Linux preflight checks.",
             "- Continuous profiling: interval/cron/stagger scheduling, trend labels, baseline drift, and comparison aggregate are visible.",
-            "- Attribution: deterministic tool evidence, baseline comparison, prompt, and trace are persisted and shown.",
+            "- Attribution: deterministic tool evidence, baseline comparison, prompt, trace, and scored evaluation report are persisted or generated for review.",
             "- Remaining external validation: Linux/WSL2 host permissions for real collectors and final manual recording.",
         ]
     )
@@ -110,6 +124,11 @@ def main() -> int:
         default=DEFAULT_CHECKLIST_PATH,
         help=f"Recording checklist path. Defaults to {DEFAULT_CHECKLIST_PATH}.",
     )
+    parser.add_argument(
+        "--attribution-evaluation-path",
+        default=DEFAULT_ATTRIBUTION_EVALUATION_PATH,
+        help=f"Attribution evaluation report path. Defaults to {DEFAULT_ATTRIBUTION_EVALUATION_PATH}.",
+    )
     args = parser.parse_args()
 
     output_path = Path(args.output)
@@ -124,6 +143,7 @@ def main() -> int:
                 minio_console_port=str(args.minio_console_port),
                 evidence_path=str(args.evidence_path),
                 checklist_path=str(args.checklist_path),
+                attribution_evaluation_path=str(args.attribution_evaluation_path),
             )
         )
         + "\n",

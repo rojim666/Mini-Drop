@@ -10,9 +10,20 @@ DEFAULT_WEB_PORT = os.environ.get("MINIDROP_WEB_PORT", "4173")
 DEFAULT_MINIO_PORT = os.environ.get("MINIDROP_MINIO_PORT", "9000")
 DEFAULT_MINIO_CONSOLE_PORT = os.environ.get("MINIDROP_MINIO_CONSOLE_PORT", "9001")
 DEFAULT_EVIDENCE_PATH = os.environ.get("MINIDROP_DEMO_EVIDENCE_OUTPUT", "artifacts/demo-evidence.md")
+DEFAULT_ATTRIBUTION_EVALUATION_PATH = os.environ.get(
+    "MINIDROP_ATTRIBUTION_EVALUATION_OUTPUT",
+    "artifacts/attribution-evaluation-report.md",
+)
 
 
-def checklist_lines(api_port: str, web_port: str, minio_port: str, minio_console_port: str, evidence_path: str) -> list[str]:
+def checklist_lines(
+    api_port: str,
+    web_port: str,
+    minio_port: str,
+    minio_console_port: str,
+    evidence_path: str,
+    attribution_evaluation_path: str,
+) -> list[str]:
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     web_url = f"http://localhost:{web_port}"
     api_health_url = f"http://localhost:{api_port}/healthz"
@@ -29,16 +40,19 @@ def checklist_lines(api_port: str, web_port: str, minio_port: str, minio_console
         f"- API health: `{api_health_url}`",
         f"- MinIO console: `{minio_url}`",
         f"- Evidence file: `{evidence_path}`",
+        f"- Attribution evaluation: `{attribution_evaluation_path}`",
         "",
         "## Preflight Commands",
         "",
         "```powershell",
         f".\\scripts\\demo\\acceptance-snapshot.ps1 -ApiPort {api_port} -WebPort {web_port} -MinioPort {minio_port} -SeedTasks",
         f".\\scripts\\demo\\write-demo-evidence.ps1 -ApiPort {api_port} -WebPort {web_port} -MinioPort {minio_port} -IncludeRealPreflight",
+        "python scripts\\demo\\write_attribution_evaluation.py",
         f".\\scripts\\demo\\write-recording-checklist.ps1 -ApiPort {api_port} -WebPort {web_port} -MinioPort {minio_port} -MinioConsolePort {minio_console_port}",
         "```",
         "",
         "```bash",
+        "python3 scripts/demo/write_attribution_evaluation.py",
         f"MINIDROP_API_PORT={api_port} MINIDROP_WEB_PORT={web_port} MINIDROP_MINIO_PORT={minio_port} MINIDROP_MINIO_CONSOLE_PORT={minio_console_port} bash ./scripts/demo/write-recording-checklist.sh",
         "```",
         "",
@@ -51,6 +65,7 @@ def checklist_lines(api_port: str, web_port: str, minio_port: str, minio_console
         "- Task comparison: TopN delta and recurring hotspot aggregate.",
         "- Plan page: continuous profile, interval/cron policy, stagger offset, windows, trend labels, baseline drift.",
         "- Coverage report: required gates and observed Agent coverage.",
+        "- Attribution evaluation report: six scored samples and criterion details.",
         "- Failure path: FAILED task reason and status history.",
         "- Evidence file: acceptance snapshot, continuous profile sample, real collector preflight.",
         "",
@@ -58,6 +73,7 @@ def checklist_lines(api_port: str, web_port: str, minio_port: str, minio_console
         "",
         "- `acceptance=OK` from `acceptance-snapshot`.",
         "- `coverage=OK` from `make coverage`.",
+        "- `attribution_evaluation=OK` from `make attribution-evaluation`.",
         "- `continuous_profiles` and `continuous_profile_samples` with schedule policy.",
         "- `minio_signed_results` greater than zero for the Compose path.",
         "- Recent Git commits with explanatory messages.",
@@ -88,6 +104,11 @@ def main() -> int:
         default=DEFAULT_EVIDENCE_PATH,
         help=f"Evidence path to show. Defaults to {DEFAULT_EVIDENCE_PATH}.",
     )
+    parser.add_argument(
+        "--attribution-evaluation-path",
+        default=DEFAULT_ATTRIBUTION_EVALUATION_PATH,
+        help=f"Attribution evaluation report path to show. Defaults to {DEFAULT_ATTRIBUTION_EVALUATION_PATH}.",
+    )
     args = parser.parse_args()
 
     output_path = Path(args.output)
@@ -102,6 +123,7 @@ def main() -> int:
                 minio_port=str(args.minio_port),
                 minio_console_port=str(args.minio_console_port),
                 evidence_path=str(args.evidence_path),
+                attribution_evaluation_path=str(args.attribution_evaluation_path),
             )
         )
         + "\n",
