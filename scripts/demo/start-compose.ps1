@@ -101,6 +101,7 @@ try {
     Write-Host ""
     Write-Host "Mini-Drop compose demo is ready."
     Write-Host "Web UI:        http://localhost:$WebPort"
+    Write-Host "Console login: demo / minidrop"
     Write-Host "API health:    http://localhost:$ApiPort/healthz"
     Write-Host "MinIO console: http://localhost:$MinioConsolePort"
     Write-Host "MinIO login:   minidrop / minidrop123"

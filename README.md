@@ -51,8 +51,16 @@ temporary signed URL.
 Then open:
 
 - Web UI: [http://localhost](http://localhost)
+- Console login: `demo` / `minidrop`
 - API health: [http://localhost:8080/healthz](http://localhost:8080/healthz)
 - MinIO console: [http://localhost:9001](http://localhost:9001), login `minidrop` / `minidrop123`
+
+The console login is enforced by the API. Console routes such as
+`/api/v1/agents`, `/api/v1/tasks`, continuous profiling, and audit logs require
+an `Authorization: Bearer ...` token returned by `/api/v1/auth/login`. You can
+override the demo credentials with `MINIDROP_AUTH_USERNAME`,
+`MINIDROP_AUTH_PASSWORD`, `MINIDROP_AUTH_TOKEN_SECRET`, and
+`MINIDROP_AUTH_SESSION_TTL_SEC`.
 
 If you already have a local API or Agent running on `8080`, start the compose
 stack on alternate ports first:

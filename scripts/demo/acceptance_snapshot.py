@@ -5,6 +5,7 @@ import urllib.error
 import urllib.request
 
 from demo_diagnostics import missing_endpoint_hint, minio_signed_url_failure_hints, signed_url_ok
+from api_auth import auth_headers
 
 
 API_PORT = os.environ.get("MINIDROP_API_PORT", "8080")
@@ -16,7 +17,8 @@ EXPECT_SINGLE_AGENT = os.environ.get("MINIDROP_EXPECT_SINGLE_AGENT", "0") == "1"
 
 
 def request_json(path: str) -> dict:
-    req = urllib.request.Request(f"{API_BASE}{path}", method="GET")
+    headers = {} if path == "/healthz" else auth_headers(API_BASE)
+    req = urllib.request.Request(f"{API_BASE}{path}", method="GET", headers=headers)
     with urllib.request.urlopen(req, timeout=10) as response:
         return json.loads(response.read().decode("utf-8"))
 

@@ -53,6 +53,7 @@ fi
 echo
 echo "Mini-Drop compose demo is ready."
 echo "Web UI:        http://localhost:${WEB_PORT}"
+echo "Console login: demo / minidrop"
 echo "API health:    http://localhost:${API_PORT}/healthz"
 echo "MinIO console: http://localhost:${MINIO_CONSOLE_PORT}"
 echo "MinIO login:   minidrop / minidrop123"

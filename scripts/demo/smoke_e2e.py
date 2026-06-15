@@ -6,6 +6,8 @@ import urllib.error
 import urllib.request
 from argparse import ArgumentParser
 
+from api_auth import auth_headers
+
 
 API_BASE = os.environ.get("MINIDROP_API_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
 
@@ -22,7 +24,7 @@ def parse_args() -> object:
 
 def request_json(path: str, method: str = "GET", body: dict | None = None) -> dict:
     data = None
-    headers = {}
+    headers = auth_headers(API_BASE)
     if body is not None:
         data = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json"

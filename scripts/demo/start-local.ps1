@@ -169,16 +169,34 @@ function Wait-ApiReady {
     throw "API server did not become ready at $BaseUrl/healthz; check $(Join-Path $LogDir 'api.log')."
 }
 
+function Get-AuthHeaders {
+    param([string]$BaseUrl)
+
+    $body = @{
+        username = if ($env:MINIDROP_AUTH_USERNAME) { $env:MINIDROP_AUTH_USERNAME } else { "demo" }
+        password = if ($env:MINIDROP_AUTH_PASSWORD) { $env:MINIDROP_AUTH_PASSWORD } else { "minidrop" }
+        tenant = if ($env:MINIDROP_AUTH_TENANT) { $env:MINIDROP_AUTH_TENANT } else { "local-demo" }
+        region = if ($env:MINIDROP_AUTH_REGION) { $env:MINIDROP_AUTH_REGION } else { "local" }
+    } | ConvertTo-Json
+
+    $response = Invoke-RestMethod -Uri "$BaseUrl/api/v1/auth/login" -Method POST -Body $body -ContentType "application/json" -TimeoutSec 5
+    if (-not $response.token) {
+        throw "API login did not return a token."
+    }
+    return @{ Authorization = "Bearer $($response.token)" }
+}
+
 function Wait-AgentReady {
     param(
         [string]$BaseUrl,
-        [string]$AgentId
+        [string]$AgentId,
+        [hashtable]$Headers
     )
 
     $deadline = (Get-Date).AddSeconds(30)
     while ((Get-Date) -lt $deadline) {
         try {
-            $response = Invoke-RestMethod -Uri "$BaseUrl/api/v1/agents" -TimeoutSec 2
+            $response = Invoke-RestMethod -Uri "$BaseUrl/api/v1/agents" -Headers $Headers -TimeoutSec 2
             foreach ($agent in $response.agents) {
                 if ($agent.id -eq $AgentId -and $agent.status -eq "ONLINE") {
                     return
@@ -210,6 +228,7 @@ Start-DemoProcess -Name "api" -FilePath "go" -Arguments @("run", "./apps/api-ser
 } | Out-Null
 
 Wait-ApiReady -BaseUrl "http://$ApiAddr"
+$authHeaders = Get-AuthHeaders -BaseUrl "http://$ApiAddr"
 
 $agentId = if ($env:MINIDROP_AGENT_ID) { $env:MINIDROP_AGENT_ID } else { "agt_local" }
 Start-DemoProcess -Name "agent" -FilePath "go" -Arguments @("run", "./apps/agent") -WorkingDirectory $Root -Environment @{
@@ -223,7 +242,7 @@ Start-DemoProcess -Name "agent" -FilePath "go" -Arguments @("run", "./apps/agent
     "MINIDROP_AGENT_VERSION" = "0.1.0"
 } | Out-Null
 
-Wait-AgentReady -BaseUrl "http://$ApiAddr" -AgentId $agentId
+Wait-AgentReady -BaseUrl "http://$ApiAddr" -AgentId $agentId -Headers $authHeaders
 
 Start-DemoProcess -Name "web" -FilePath "npm.cmd" -Arguments @("run", "dev", "--", "--host", $WebAddr, "--port", [string]$WebPort) -WorkingDirectory (Join-Path $Root "apps\web") -Environment @{
     "VITE_API_BASE_URL" = "http://$ApiAddr"
@@ -233,6 +252,7 @@ $targetPid = Get-Content (Join-Path $LogDir "target.pid")
 Write-Host ""
 Write-Host "Mini-Drop local demo is starting."
 Write-Host "Web UI: http://localhost:$WebPort"
+Write-Host "Login:  demo / minidrop"
 Write-Host "API:    http://$ApiAddr/healthz"
 Write-Host "Logs:   $LogDir"
 Write-Host ""
