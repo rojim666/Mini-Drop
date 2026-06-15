@@ -12,9 +12,8 @@ DEFAULT_COMPOSE_FILE = ROOT / "deploy" / "docker-compose.yml"
 REQUIRED_SERVICES = {
     "postgres": {"health": "healthy"},
     "minio": {"health": "healthy", "ports": {9000: "minio_port", 9001: "minio_console_port"}},
-    "demo-target": {},
     "api-server": {"health": "healthy", "ports": {8080: "api_port"}},
-    "agent": {},
+    "agent": {"health": "healthy"},
     "web": {"health": "healthy", "ports": {80: "web_port"}},
 }
 
@@ -61,6 +60,14 @@ def check_services(services: list[dict[str, Any]], expected_ports: dict[str, int
     failures: list[str] = []
     lines: list[str] = []
     by_service = {str(service.get("Service") or ""): service for service in services}
+    unexpected_running = sorted(
+        name
+        for name, service in by_service.items()
+        if name and name not in REQUIRED_SERVICES and str(service.get("State") or "") == "running"
+    )
+    for name in unexpected_running:
+        failures.append(f"unexpected running service {name}; run docker compose down --remove-orphans")
+        lines.append(f"{name}: unexpected running service")
 
     for name, requirements in REQUIRED_SERVICES.items():
         service = by_service.get(name)
@@ -119,7 +126,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Verify the Mini-Drop Docker Compose demo stack is running.")
     parser.add_argument("--compose-file", default=str(DEFAULT_COMPOSE_FILE), help="Path to deploy/docker-compose.yml.")
     parser.add_argument("--api-port", type=int, default=8080)
-    parser.add_argument("--web-port", type=int, default=4173)
+    parser.add_argument("--web-port", type=int, default=80)
     parser.add_argument("--minio-port", type=int, default=9000)
     parser.add_argument("--minio-console-port", type=int, default=9001)
     args = parser.parse_args()

@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_API_PORT = os.environ.get("MINIDROP_API_PORT", "8080")
-DEFAULT_WEB_PORT = os.environ.get("MINIDROP_WEB_PORT", "4173")
+DEFAULT_WEB_PORT = os.environ.get("MINIDROP_WEB_PORT", "80")
 DEFAULT_MINIO_PORT = os.environ.get("MINIDROP_MINIO_PORT", "9000")
 DEFAULT_MINIO_CONSOLE_PORT = os.environ.get("MINIDROP_MINIO_CONSOLE_PORT", "9001")
 DEFAULT_REAL_COLLECTORS = os.environ.get("MINIDROP_REAL_COLLECTORS", "perf,ebpf-syscall,py-spy")
@@ -401,7 +401,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--agent-id",
-        default=os.environ.get("MINIDROP_TARGET_AGENT_ID", "agt_compose"),
+        default=os.environ.get("MINIDROP_TARGET_AGENT_ID", "drop_agent"),
         help="Agent ID for seeded compose tasks.",
     )
     parser.add_argument(

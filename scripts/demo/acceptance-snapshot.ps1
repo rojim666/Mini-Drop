@@ -1,10 +1,10 @@
 param(
     [int]$ApiPort = $(if ($env:MINIDROP_API_PORT) { [int]$env:MINIDROP_API_PORT } else { 8080 }),
-    [int]$WebPort = $(if ($env:MINIDROP_WEB_PORT) { [int]$env:MINIDROP_WEB_PORT } else { 4173 }),
+    [int]$WebPort = $(if ($env:MINIDROP_WEB_PORT) { [int]$env:MINIDROP_WEB_PORT } else { 80 }),
     [int]$MinioPort = $(if ($env:MINIDROP_MINIO_PORT) { [int]$env:MINIDROP_MINIO_PORT } else { 9000 }),
     [int]$SeedTaskCount = $(if ($env:MINIDROP_ACCEPTANCE_SEED_TASKS) { [int]$env:MINIDROP_ACCEPTANCE_SEED_TASKS } else { 2 }),
     [int]$TargetPid = $(if ($env:MINIDROP_TARGET_PID) { [int]$env:MINIDROP_TARGET_PID } else { 1 }),
-    [string]$AgentId = $(if ($env:MINIDROP_TARGET_AGENT_ID) { $env:MINIDROP_TARGET_AGENT_ID } else { "agt_compose" }),
+    [string]$AgentId = $(if ($env:MINIDROP_TARGET_AGENT_ID) { $env:MINIDROP_TARGET_AGENT_ID } else { "drop_agent" }),
     [switch]$SeedTasks
 )
 

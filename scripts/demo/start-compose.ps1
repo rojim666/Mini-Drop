@@ -1,6 +1,6 @@
 param(
     [int]$ApiPort = $(if ($env:MINIDROP_API_PORT) { [int]$env:MINIDROP_API_PORT } else { 8080 }),
-    [int]$WebPort = $(if ($env:MINIDROP_WEB_PORT) { [int]$env:MINIDROP_WEB_PORT } else { 4173 }),
+    [int]$WebPort = $(if ($env:MINIDROP_WEB_PORT) { [int]$env:MINIDROP_WEB_PORT } else { 80 }),
     [int]$MinioPort = $(if ($env:MINIDROP_MINIO_PORT) { [int]$env:MINIDROP_MINIO_PORT } else { 9000 }),
     [int]$MinioConsolePort = $(if ($env:MINIDROP_MINIO_CONSOLE_PORT) { [int]$env:MINIDROP_MINIO_CONSOLE_PORT } else { 9001 }),
     [int]$SmokeTaskCount = $(if ($env:MINIDROP_COMPOSE_SMOKE_TASKS) { [int]$env:MINIDROP_COMPOSE_SMOKE_TASKS } else { 2 }),
@@ -72,10 +72,12 @@ $environment = @{
     "MINIDROP_MINIO_CONSOLE_PORT" = $MinioConsolePort
     "MINIDROP_API_BASE_URL" = "http://127.0.0.1:$ApiPort"
     "MINIDROP_EXPECT_MINIO_URL" = "1"
+    "MINIDROP_EXPECT_SINGLE_AGENT" = "1"
 }
 
 $previous = Set-ScopedEnvironment -Environment $environment
 try {
+    Invoke-CheckedNative -FilePath "docker" -Arguments @("compose", "-f", $ComposeFile, "down", "--remove-orphans", "--volumes")
     Invoke-CheckedNative -FilePath "docker" -Arguments @("compose", "-f", $ComposeFile, "up", "--build", "--pull", "never", "-d")
 
     if (-not $SkipSmoke) {
@@ -90,7 +92,7 @@ try {
                 "--pid",
                 "1",
                 "--agent-id",
-                "agt_compose",
+                "drop_agent",
                 "--expect-minio-url"
             )
         }
@@ -103,7 +105,7 @@ try {
     Write-Host "MinIO console: http://localhost:$MinioConsolePort"
     Write-Host "MinIO login:   minidrop / minidrop123"
     Write-Host ""
-    Write-Host "Use PID 1 in the Web task form for the bundled compose target."
+    Write-Host "Use PID 1 in the Web task form for the compose mock path."
     Write-Host "Snapshot:      .\scripts\demo\acceptance-snapshot.ps1 -ApiPort $ApiPort -WebPort $WebPort -MinioPort $MinioPort"
     Write-Host "Evidence:      .\scripts\demo\write-demo-evidence.ps1 -ApiPort $ApiPort -WebPort $WebPort -MinioPort $MinioPort -IncludeRealPreflight"
     Write-Host "Checklist:     .\scripts\demo\write-recording-checklist.ps1 -ApiPort $ApiPort -WebPort $WebPort -MinioPort $MinioPort -MinioConsolePort $MinioConsolePort"

@@ -9,8 +9,10 @@ from demo_diagnostics import missing_endpoint_hint, minio_signed_url_failure_hin
 
 API_PORT = os.environ.get("MINIDROP_API_PORT", "8080")
 API_BASE = os.environ.get("MINIDROP_API_BASE_URL", f"http://127.0.0.1:{API_PORT}").rstrip("/")
-WEB_PORT = os.environ.get("MINIDROP_WEB_PORT", "4173")
+WEB_PORT = os.environ.get("MINIDROP_WEB_PORT", "80")
 MINIO_PORT = os.environ.get("MINIDROP_MINIO_PORT", "9000")
+TARGET_AGENT_ID = os.environ.get("MINIDROP_TARGET_AGENT_ID", "drop_agent")
+EXPECT_SINGLE_AGENT = os.environ.get("MINIDROP_EXPECT_SINGLE_AGENT", "0") == "1"
 
 
 def request_json(path: str) -> dict:
@@ -64,6 +66,10 @@ def main() -> int:
     online_agents = [agent for agent in agents if agent.get("status") == "ONLINE"]
     if not online_agents:
         failures.append("No ONLINE agent found")
+    if not any(agent.get("id") == TARGET_AGENT_ID and agent.get("status") == "ONLINE" for agent in agents):
+        failures.append(f"Expected {TARGET_AGENT_ID} to be ONLINE")
+    if EXPECT_SINGLE_AGENT and len(online_agents) != 1:
+        failures.append(f"Expected exactly one ONLINE agent, got {len(online_agents)}")
 
     tasks = request_json("/api/v1/tasks").get("tasks", [])
     done_tasks = [task for task in tasks if task.get("status") == "DONE"]

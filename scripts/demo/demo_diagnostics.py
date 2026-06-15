@@ -20,17 +20,17 @@ def minio_signed_url_failure_hints(
         {str(agent.get("id") or "") for agent in agents if agent.get("id") and agent.get("status") == "ONLINE"}
     )
 
-    if online_agent_ids and "agt_compose" not in online_agent_ids:
+    if online_agent_ids and "drop_agent" not in online_agent_ids:
         hints.append(
             "Observed ONLINE agents "
             + ", ".join(online_agent_ids)
-            + "; compose acceptance expects agt_compose, so this API looks like a local demo."
+            + "; compose acceptance expects drop_agent, so this API looks like a local demo."
         )
-    elif agent_ids and "agt_compose" not in agent_ids:
+    elif agent_ids and "drop_agent" not in agent_ids:
         hints.append(
             "Observed agents "
             + ", ".join(agent_ids)
-            + "; compose acceptance expects agt_compose after start-compose."
+            + "; compose acceptance expects drop_agent after start-compose."
         )
 
     local_artifact_urls = [url for url in result_urls if "/artifacts/" in url and "X-Amz-Signature=" not in url]

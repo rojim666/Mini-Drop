@@ -17,9 +17,9 @@ COPY --from=builder /out/mini-drop-agent /app/mini-drop-agent
 COPY apps/analyzer /app/analyzer
 
 ENV MINIDROP_API_BASE_URL=http://api-server:8080
-ENV MINIDROP_AGENT_ID=agt_compose
-ENV MINIDROP_AGENT_HOSTNAME=compose-agent
-ENV MINIDROP_AGENT_IP=demo-target
+ENV MINIDROP_AGENT_ID=drop_agent
+ENV MINIDROP_AGENT_HOSTNAME=drop-agent
+ENV MINIDROP_AGENT_IP=127.0.0.1
 ENV MINIDROP_AGENT_VERSION=0.1.0
 ENV MINIDROP_PYTHON_BIN=python
 ENV MINIDROP_ANALYZER_SCRIPT=/app/analyzer/main.py
