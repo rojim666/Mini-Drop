@@ -217,7 +217,16 @@ def check_real_collector_readiness(collectors: str, env: dict[str, str]) -> Step
             part
             for part in [
                 result.output,
-                "Real collectors are BLOCKED on this host. This is allowed for the Windows compose recording path when the generated report lists the missing Linux/WSL2 tools or permissions.",
+                "Real collectors are BLOCKED on this host. This is allowed for the Windows compose recording path when artifacts/real-collector-preflight.md lists the missing Linux/WSL2 tools or permissions and the next install commands.",
+            ]
+            if part
+        )
+    else:
+        result.output = "\n".join(
+            part
+            for part in [
+                result.output,
+                "Real collector preflight evidence was written to artifacts/real-collector-preflight.md.",
             ]
             if part
         )
@@ -256,7 +265,16 @@ def check_real_smoke_report(collectors: str, env: dict[str, str]) -> StepResult:
             part
             for part in [
                 result.output,
-                "Real smoke report generation is non-blocking for the Windows compose recording path.",
+                "Real smoke report generation is non-blocking for the Windows compose recording path. The report must classify each collector as BLOCKED, READY, DONE, or FAILED.",
+            ]
+            if part
+        )
+    else:
+        result.output = "\n".join(
+            part
+            for part in [
+                result.output,
+                "Real smoke evidence was written to artifacts/real-smoke-report.md.",
             ]
             if part
         )
@@ -350,7 +368,7 @@ def write_report(
             "## Recording Gate",
             "",
             "- Start recording only when the overall status is `OK`.",
-            "- If real collector preflight is included, `BLOCKED` in the evidence file is acceptable on Windows only when the Linux/WSL2 commands and next steps are shown.",
+            "- If real collector preflight is included, `BLOCKED` is acceptable on Windows only when `artifacts/real-collector-preflight.md` and `artifacts/real-smoke-report.md` show the Linux/WSL2 blocker and next command.",
             "- Keep `artifacts/demo-evidence.md`, `artifacts/coverage-report.md`, `artifacts/attribution-evaluation-report.md`, `artifacts/recording-checklist.md`, and `artifacts/submission-notes.md` open before the final walkthrough.",
         ]
     )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import html
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Literal
@@ -21,6 +22,8 @@ DEFAULT_COVERAGE_PATH = ROOT / "artifacts" / "coverage-report.md"
 DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "submission-screenshots"
 DEFAULT_MINIO_USER = "minidrop"
 DEFAULT_MINIO_PASSWORD = "minidrop123"
+DEFAULT_WEB_USER = os.environ.get("MINIDROP_AUTH_USERNAME", "demo")
+DEFAULT_WEB_PASSWORD = os.environ.get("MINIDROP_AUTH_PASSWORD", "minidrop")
 
 CaptureKind = Literal["web", "markdown", "minio"]
 
@@ -56,8 +59,27 @@ async def wait_for_selector(page, selector: str) -> None:
         await page.locator(selector).first.wait_for(state="visible", timeout=15000)
 
 
+async def login_to_web_if_needed(page, user: str, password: str) -> None:
+    login_button = page.get_by_role("button", name="登录控制台").first
+    try:
+        await login_button.wait_for(state="visible", timeout=3000)
+    except PlaywrightError:
+        return
+
+    try:
+        await page.locator('input[type="text"]').first.fill(user, timeout=3000)
+        await page.locator('input[type="password"]').first.fill(password, timeout=3000)
+        await login_button.click(timeout=3000)
+        await page.get_by_text("我的机器", exact=True).first.wait_for(state="visible", timeout=15000)
+    except PlaywrightError as exc:
+        raise RuntimeError(f"Web login failed before screenshot capture: {exc}") from exc
+
+
 async def capture_one(page, base_url: str, output_dir: Path, capture: CapturePage) -> None:
     await page.goto(f"{base_url}{capture.path}", wait_until="domcontentloaded")
+    await login_to_web_if_needed(page, DEFAULT_WEB_USER, DEFAULT_WEB_PASSWORD)
+    if page.url.rstrip("/") == base_url.rstrip("/"):
+        await page.goto(f"{base_url}{capture.path}", wait_until="domcontentloaded")
     if capture.wait_for:
         await wait_for_selector(page, capture.wait_for)
     if capture.selector:

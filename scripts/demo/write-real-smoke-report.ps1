@@ -1,5 +1,5 @@
 param(
-    [string[]]$Collectors = $(if ($env:MINIDROP_REAL_COLLECTORS) { $env:MINIDROP_REAL_COLLECTORS } elseif ($env:COLLECTOR_TYPE) { $env:COLLECTOR_TYPE } else { "perf" }),
+    [string[]]$Collectors = $(if ($env:MINIDROP_REAL_COLLECTORS) { $env:MINIDROP_REAL_COLLECTORS } elseif ($env:COLLECTOR_TYPE) { $env:COLLECTOR_TYPE } else { "perf,ebpf-syscall,py-spy" }),
     [string]$Output = $(if ($env:MINIDROP_REAL_SMOKE_OUTPUT) { $env:MINIDROP_REAL_SMOKE_OUTPUT } else { "artifacts/real-smoke-report.md" }),
     [string]$ApiBase = $(if ($env:MINIDROP_API_BASE_URL) { $env:MINIDROP_API_BASE_URL } else { "http://127.0.0.1:8080" }),
     [string]$AgentId = $(if ($env:MINIDROP_AGENT_ID) { $env:MINIDROP_AGENT_ID } else { "agt_local" }),

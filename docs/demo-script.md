@@ -45,6 +45,8 @@ Expected preflight state on the current machine:
 - Mock compose path: ready.
 - Final preflight overall status: `OK`.
 - Real collector readiness step: non-blocking for Windows compose recording.
+- Real smoke report step: non-blocking for Windows compose recording, but it
+  must classify each collector as `BLOCKED`, `READY`, `DONE`, or `FAILED`.
 - Real `perf`: blocked until `perf` is installed and `perf_event_paranoid` is lowered.
 - `ebpf-syscall`: blocked until `bpftrace` and tracefs permissions are ready.
 - `py-spy`: blocked until `py-spy` is installed and attach permissions are available.
@@ -165,6 +167,10 @@ Say:
 > depends on Linux host prerequisites. The evidence file records exactly which
 > collectors are ready or blocked and prints the next command to run.
 
+Also open `artifacts/real-smoke-report.md`. Its blocked reason should identify
+the failing layer: API reachability, Agent heartbeat, PID selection, Linux
+runtime, missing collector tool, or collector permissions.
+
 If WSL2 dependencies are later installed, run:
 
 ```bash
@@ -191,7 +197,8 @@ Before finishing, show or mention:
 - `Real collector readiness` from `final-preflight`, showing READY or the exact
   BLOCKED prerequisites.
 - `artifacts/real-smoke-report.md`, showing smoke READY/DONE or the current
-  BLOCKED reason.
+  BLOCKED reason. By default this report checks `perf`, `ebpf-syscall`, and
+  `py-spy`; use `COLLECTOR_TYPE=perf` only for a focused single-collector run.
 - `continuous_profiles` and `continuous_profile_samples` lines from
   `acceptance-snapshot`, including each profile's schedule policy.
 - `artifacts/demo-evidence.md`.

@@ -202,9 +202,12 @@ make smoke-real COLLECTOR_TYPE=py-spy
 ```
 
 `make real-smoke-report` writes `artifacts/real-smoke-report.md`. It records
-preflight status for the selected collectors and, when the Linux local stack is
-already running, can include the smoke command output. On Windows this report is
-allowed to be `BLOCKED`; it should still show the missing tool or permission.
+preflight status for `perf,ebpf-syscall,py-spy` by default and, when the Linux
+local stack is already running, can include the smoke command output. Use
+`COLLECTOR_TYPE=perf` or `--collectors perf` when you intentionally want a
+single-collector report. On Windows this report is allowed to be `BLOCKED`; it
+must still show whether the blocker is API reachability, Agent heartbeat, PID
+selection, Linux runtime, missing tools, or permissions.
 
 Stop:
 
@@ -230,6 +233,10 @@ Use the individual scripts when you want the full output for one collector.
 `make real-preflight` writes `artifacts/real-collector-preflight.md` with the
 same readiness summary and the exact install or permission commands that would
 unblock the current host.
+`make real-smoke-report` writes the matching smoke readiness report. With
+`--skip-smoke`, it does not require API or Agent to be running; without
+`--skip-smoke`, it checks API `/healthz`, the selected Agent status, and target
+PID before creating the real task.
 
 Typical fixes:
 

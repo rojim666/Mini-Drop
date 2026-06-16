@@ -391,9 +391,13 @@ a script crash; use `.\scripts\demo\prepare-real-collectors.ps1 -Strict` or
 `bash ./scripts/demo/prepare-real-collectors.sh --strict` when you want blocked
 collectors to fail CI.
 `make real-smoke-report` writes `artifacts/real-smoke-report.md`. By default it
-records preflight readiness and blocked reasons; after starting the Linux local
-demo, run `bash ./scripts/demo/write-real-smoke-report.sh --collectors perf`
-without `--skip-smoke` to include the real smoke command output.
+checks `perf,ebpf-syscall,py-spy` and classifies each collector as `BLOCKED`,
+`READY`, `DONE`, or `FAILED`. `BLOCKED` means API, Agent, PID, Linux tools, or
+permissions are not ready; `READY` means preflight passed but smoke was skipped;
+`DONE` means the real smoke task completed; `FAILED` means preflight passed but
+the smoke task failed. After starting the Linux local demo, run
+`bash ./scripts/demo/write-real-smoke-report.sh --collectors perf` without
+`--skip-smoke` to include the real smoke command output for a single collector.
 
 The smoke helper can also request the real collector:
 
@@ -419,7 +423,10 @@ make smoke-real COLLECTOR_TYPE=py-spy
 ```
 
 The helper reuses `tmp/local-demo/target.pid` by default and runs the matching
-environment check before creating the task.
+environment check before creating the task. It also verifies API `/healthz`,
+that the selected Agent is `ONLINE`, and that a target PID is available before
+submitting the task, so missing runtime pieces produce actionable next steps
+instead of a low-level stack trace.
 
 ### eBPF syscall collector on WSL2 / Linux
 

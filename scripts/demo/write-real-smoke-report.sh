@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-COLLECTORS="${MINIDROP_REAL_COLLECTORS:-${COLLECTOR_TYPE:-perf}}"
+COLLECTORS="${MINIDROP_REAL_COLLECTORS:-${COLLECTOR_TYPE:-perf,ebpf-syscall,py-spy}}"
 OUTPUT="${MINIDROP_REAL_SMOKE_OUTPUT:-artifacts/real-smoke-report.md}"
 API_BASE="${MINIDROP_API_BASE_URL:-http://127.0.0.1:8080}"
 AGENT_ID="${MINIDROP_AGENT_ID:-agt_local}"
