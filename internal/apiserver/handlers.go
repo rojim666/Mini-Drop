@@ -49,6 +49,30 @@ type continuousProfileRequest struct {
 	StaggerSec        int    `json:"stagger_sec"`
 }
 
+type aiConfigPayload struct {
+	Enabled          bool       `json:"enabled"`
+	BaseURL          string     `json:"base_url"`
+	Model            string     `json:"model"`
+	TimeoutSec       int        `json:"timeout_sec"`
+	MaxTokens        int        `json:"max_tokens"`
+	APIKeyConfigured bool       `json:"api_key_configured"`
+	APIKeyDisplay    string     `json:"api_key_display"`
+	Provider         string     `json:"provider"`
+	Endpoint         string     `json:"endpoint"`
+	Source           string     `json:"source"`
+	UpdatedAt        *time.Time `json:"updated_at,omitempty"`
+	Notes            []string   `json:"notes,omitempty"`
+}
+
+type aiConfigRequest struct {
+	Enabled    bool   `json:"enabled"`
+	BaseURL    string `json:"base_url"`
+	APIKey     string `json:"api_key"`
+	Model      string `json:"model"`
+	TimeoutSec int    `json:"timeout_sec"`
+	MaxTokens  int    `json:"max_tokens"`
+}
+
 type continuousProfilePayload struct {
 	ID                string     `json:"id"`
 	Name              string     `json:"name"`
@@ -292,6 +316,8 @@ func (s *Service) newRouter() *gin.Engine {
 		console.POST("/continuous-profiles/:id/disable", s.disableContinuousProfile)
 		console.GET("/continuous-profiles/:id/windows", s.listContinuousProfileWindows)
 		console.GET("/continuous-profiles/:id/trends", s.getContinuousProfileTrends)
+		console.GET("/ai-config", s.getAIConfig)
+		console.POST("/ai-config", s.updateAIConfig)
 		console.GET("/audit-logs", s.listAuditLogs)
 
 		internal := v1.Group("/internal")
@@ -357,6 +383,77 @@ func (s *Service) requestLogMiddleware() gin.HandlerFunc {
 			"duration_ms", time.Since(started).Milliseconds(),
 		)
 	}
+}
+
+func (s *Service) getAIConfig(c *gin.Context) {
+	state := s.currentAIState()
+	payload := aiConfigPayload{
+		Enabled:          state.Enabled,
+		BaseURL:          state.BaseURL,
+		Model:            state.Model,
+		TimeoutSec:       state.TimeoutSec,
+		MaxTokens:        state.MaxTokens,
+		APIKeyConfigured: strings.TrimSpace(state.APIKey) != "",
+		APIKeyDisplay:    maskedSecret(state.APIKey),
+		Provider:         aiProviderLabel(state.BaseURL),
+		Endpoint:         s.aiEndpointLabel(state.BaseURL),
+		Source:           "environment + sqlite",
+		UpdatedAt:        state.UpdatedAt,
+		Notes: []string{
+			"API Key 仅用于保存，不会回显明文。",
+			"启用后会覆盖环境变量中的 AI 归因开关。",
+			"关闭后仍保留已保存的配置，方便下次恢复。",
+		},
+	}
+	c.JSON(http.StatusOK, payload)
+}
+
+func (s *Service) updateAIConfig(c *gin.Context) {
+	var req aiConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.writeError(c, http.StatusBadRequest, err)
+		return
+	}
+
+	now := time.Now().UTC()
+	current := s.currentAIState()
+	apiKey := strings.TrimSpace(req.APIKey)
+	if apiKey == "" {
+		apiKey = current.APIKey
+	}
+	next := aiRuntimeState{
+		Enabled:    req.Enabled,
+		BaseURL:    req.BaseURL,
+		APIKey:     apiKey,
+		Model:      req.Model,
+		TimeoutSec: req.TimeoutSec,
+		MaxTokens:  req.MaxTokens,
+	}
+	if err := validateAIState(next); err != nil {
+		s.writeError(c, http.StatusBadRequest, err)
+		return
+	}
+
+	saved, err := saveAIState(s.db, next, now)
+	if err != nil {
+		s.writeError(c, http.StatusInternalServerError, err)
+		return
+	}
+	s.setAIState(saved)
+
+	c.JSON(http.StatusOK, aiConfigPayload{
+		Enabled:          saved.Enabled,
+		BaseURL:          saved.BaseURL,
+		Model:            saved.Model,
+		TimeoutSec:       saved.TimeoutSec,
+		MaxTokens:        saved.MaxTokens,
+		APIKeyConfigured: strings.TrimSpace(saved.APIKey) != "",
+		APIKeyDisplay:    maskedSecret(saved.APIKey),
+		Provider:         aiProviderLabel(saved.BaseURL),
+		Endpoint:         s.aiEndpointLabel(saved.BaseURL),
+		Source:           "sqlite",
+		UpdatedAt:        saved.UpdatedAt,
+	})
 }
 
 func (s *Service) listAgents(c *gin.Context) {
@@ -1677,29 +1774,50 @@ func (s *Service) shouldRebuildAttribution(payload *attributionPayload) bool {
 	if payload == nil || payload.ResourceTimeline == nil {
 		return true
 	}
-	if s.ai == nil {
+	s.aiMu.RLock()
+	aiClient := s.ai
+	s.aiMu.RUnlock()
+	if aiClient == nil {
 		return false
 	}
-	return payload.AnalysisEngine != "ai" || payload.Model != s.ai.model
+	return payload.AnalysisEngine != "ai" || payload.Model != aiClient.model
 }
 
 func (s *Service) buildAIAttribution(task minidrop.Task, rulePayload *attributionPayload, hotspots []hotspotPayload) *attributionPayload {
-	if s.ai == nil {
+	s.aiMu.RLock()
+	aiClient := s.ai
+	s.aiMu.RUnlock()
+	if aiClient == nil {
 		return rulePayload
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.AITimeout)
+	aiTimeout := aiClient.timeout
+	if aiTimeout <= 0 {
+		aiTimeout = s.cfg.AITimeout
+	}
+	if aiTimeout <= 0 {
+		aiTimeout = 20 * time.Second
+	}
+	aiModel := aiClient.model
+	if strings.TrimSpace(aiModel) == "" {
+		aiModel = s.cfg.AIModel
+	}
+	if strings.TrimSpace(aiModel) == "" {
+		aiModel = "gpt-4o-mini"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), aiTimeout)
 	defer cancel()
 
-	aiPayload, err := s.ai.Analyze(ctx, task, rulePayload, hotspots)
+	aiPayload, err := aiClient.Analyze(ctx, task, rulePayload, hotspots)
 	if err != nil {
-		s.log.Warn("AI attribution failed; falling back to rules", "task_id", task.ID, "model", s.cfg.AIModel, "error", err)
+		s.log.Warn("AI attribution failed; falling back to rules", "task_id", task.ID, "model", aiModel, "error", err)
 		rulePayload.AnalysisEngine = "rule"
-		rulePayload.Model = s.cfg.AIModel
+		rulePayload.Model = aiModel
 		rulePayload.FallbackReason = err.Error()
 		rulePayload.ToolTrace = append(rulePayload.ToolTrace, attributionToolCallPayload{
 			Name:   "call_ai_model",
-			Input:  fmt.Sprintf("model=%s", s.cfg.AIModel),
+			Input:  fmt.Sprintf("model=%s", aiModel),
 			Output: "fallback_to_rule: " + err.Error(),
 		})
 		return rulePayload

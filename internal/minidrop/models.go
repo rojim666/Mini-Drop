@@ -89,6 +89,14 @@ type AttributionResult struct {
 	UpdatedAt            time.Time `gorm:"not null"`
 }
 
+type AppSetting struct {
+	Key       string    `gorm:"primaryKey;size:128"`
+	Value     string    `gorm:"type:text;not null"`
+	Secret    bool      `gorm:"not null"`
+	CreatedAt time.Time `gorm:"not null"`
+	UpdatedAt time.Time `gorm:"not null"`
+}
+
 type ContinuousProfile struct {
 	ID                string `gorm:"primaryKey;size:64"`
 	Name              string `gorm:"size:255;not null"`

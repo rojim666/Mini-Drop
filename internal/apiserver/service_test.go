@@ -55,6 +55,49 @@ func TestAuthProtectsConsoleRoutes(t *testing.T) {
 	}
 }
 
+func TestAIConfigCanBeReadAndUpdatedWithoutLeakingSecret(t *testing.T) {
+	svc := newTestServiceWithConfig(t, Config{
+		AIEnabled:   false,
+		AIBaseURL:   "https://api.openai.com/v1",
+		AIAPIKey:    "env-secret-value",
+		AIModel:     "gpt-4o-mini",
+		AITimeout:   20 * time.Second,
+		AIMaxTokens: 800,
+	})
+	router := svc.Router()
+
+	initial := performJSON(t, router, http.MethodGet, "/api/v1/ai-config", nil, http.StatusOK)
+	if got := initial["api_key_display"].(string); strings.Contains(got, "env-secret-value") {
+		t.Fatalf("expected masked secret, got %q", got)
+	}
+
+	updated := performJSON(t, router, http.MethodPost, "/api/v1/ai-config", map[string]any{
+		"enabled":     true,
+		"base_url":    "https://example.test/v1",
+		"api_key":     "sk-test-123456",
+		"model":       "demo-model",
+		"timeout_sec": 12,
+		"max_tokens":  512,
+	}, http.StatusOK)
+	if got := updated["enabled"].(bool); !got {
+		t.Fatal("expected AI config enabled")
+	}
+	if got := updated["model"].(string); got != "demo-model" {
+		t.Fatalf("expected updated model, got %q", got)
+	}
+	if got := updated["api_key_display"].(string); got == "sk-test-123456" {
+		t.Fatal("expected API key to be masked")
+	}
+
+	state := svc.currentAIState()
+	if !state.Enabled || state.APIKey != "sk-test-123456" || state.Model != "demo-model" {
+		t.Fatalf("expected runtime AI state to update, got %+v", state)
+	}
+	if svc.ai == nil || svc.ai.model != "demo-model" {
+		t.Fatal("expected AI client to be rebuilt from saved config")
+	}
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 	ctx := context.Background()

@@ -187,6 +187,30 @@ func chatCompletionsURL(base string) (string, error) {
 	return parsed.String(), nil
 }
 
+func aiProviderLabel(base string) string {
+	lower := strings.ToLower(strings.TrimSpace(base))
+	switch {
+	case strings.Contains(lower, "openai.com"):
+		return "OpenAI compatible"
+	case strings.Contains(lower, "azure.com"):
+		return "Azure OpenAI compatible"
+	case strings.Contains(lower, "localhost"), strings.Contains(lower, "127.0.0.1"):
+		return "Local OpenAI compatible"
+	case lower == "":
+		return "OpenAI compatible"
+	default:
+		return "Custom OpenAI compatible"
+	}
+}
+
+func (s *Service) aiEndpointLabel(base string) string {
+	endpoint, err := chatCompletionsURL(base)
+	if err != nil {
+		return err.Error()
+	}
+	return endpoint
+}
+
 func aiAttributionPrompt(task minidrop.Task, rulePayload *attributionPayload, hotspots []hotspotPayload) string {
 	type promptEvidence struct {
 		Task             minidrop.Task                `json:"task"`
