@@ -247,3 +247,27 @@ export interface CreateContinuousProfileInput {
   cron_expression?: string;
   stagger_sec: number;
 }
+
+export interface AIConfig {
+  enabled: boolean;
+  base_url: string;
+  model: string;
+  timeout_sec: number;
+  max_tokens: number;
+  api_key_configured: boolean;
+  api_key_display: string;
+  provider: string;
+  endpoint: string;
+  source: string;
+  updated_at?: string;
+  notes?: string[];
+}
+
+export interface UpdateAIConfigInput {
+  enabled: boolean;
+  base_url: string;
+  api_key: string;
+  model: string;
+  timeout_sec: number;
+  max_tokens: number;
+}

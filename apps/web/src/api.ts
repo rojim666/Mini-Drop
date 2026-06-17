@@ -1,5 +1,6 @@
 import type {
   Agent,
+  AIConfig,
   AuditLog,
   ContinuousProfile,
   ContinuousTrend,
@@ -11,6 +12,7 @@ import type {
   LoginRequest,
   LoginResponse,
   Task,
+  UpdateAIConfigInput,
   UserProfile,
 } from "./types";
 
@@ -137,4 +139,15 @@ export async function getContinuousProfileTrends(profileId: string, limit = 12) 
 
 export async function getAuditLogs() {
   return request<{ audit_logs: AuditLog[] }>("/api/v1/audit-logs");
+}
+
+export async function getAIConfig() {
+  return request<AIConfig>("/api/v1/ai-config");
+}
+
+export async function updateAIConfig(input: UpdateAIConfigInput) {
+  return request<AIConfig>("/api/v1/ai-config", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }

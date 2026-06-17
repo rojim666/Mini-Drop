@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ActivitySquare,
@@ -37,6 +37,7 @@ import {
   getContinuousProfileTrends,
   getContinuousProfileWindows,
   getContinuousProfiles,
+  getAIConfig,
   getCurrentUser,
   getStoredAuthToken,
   getStoredUserProfile,
@@ -45,9 +46,11 @@ import {
   login,
   setContinuousProfileEnabled,
   storeAuthSession,
+  updateAIConfig,
 } from "./api";
 import type {
   Agent,
+  AIConfig,
   AuditLog,
   ContinuousProfile,
   ContinuousTrend,
@@ -59,13 +62,15 @@ import type {
   Hotspot,
   LoginRequest,
   Task,
+  UpdateAIConfigInput,
   UserProfile,
 } from "./types";
 import "./App.css";
 
-type NavKey = "home" | "quick" | "machines" | "history" | "files" | "schedule" | "compare";
+type NavKey = "home" | "quick" | "machines" | "history" | "files" | "schedule" | "ai" | "compare";
 type WindowRangeKey = "latest" | "1h" | "6h" | "24h";
-const navKeys: NavKey[] = ["home", "quick", "machines", "history", "files", "schedule", "compare"];
+type FormFeedback = { tone: "success" | "error"; message: string };
+const navKeys: NavKey[] = ["home", "quick", "machines", "history", "files", "schedule", "ai", "compare"];
 
 const defaultWindowFilters: ContinuousWindowFilters & { range: WindowRangeKey } = {
   status: "ALL",
@@ -92,6 +97,15 @@ const defaultContinuousInput: CreateContinuousProfileInput = {
   stagger_sec: 0,
 };
 
+const defaultAIConfigInput: UpdateAIConfigInput = {
+  enabled: false,
+  base_url: "https://api.openai.com/v1",
+  api_key: "",
+  model: "gpt-4o-mini",
+  timeout_sec: 20,
+  max_tokens: 800,
+};
+
 const topLinks: Array<{ key: NavKey; label: string; icon: LucideIcon }> = [
   { key: "home", label: "首页", icon: LayoutDashboard },
   { key: "quick", label: "快速接入", icon: ActivitySquare },
@@ -99,6 +113,7 @@ const topLinks: Array<{ key: NavKey; label: string; icon: LucideIcon }> = [
   { key: "history", label: "历史任务", icon: History },
   { key: "files", label: "文件分析", icon: FolderOpen },
   { key: "schedule", label: "计划任务", icon: Timer },
+  { key: "ai", label: "智能分析", icon: BrainCircuit },
   { key: "compare", label: "任务对比", icon: GitCompareArrows },
 ];
 
@@ -120,6 +135,7 @@ function App() {
   const [windows, setWindows] = useState<ContinuousWindow[]>([]);
   const [windowSummary, setWindowSummary] = useState<ContinuousWindowSummary | null>(null);
   const [trend, setTrend] = useState<ContinuousTrend | null>(null);
+  const [aiConfig, setAIConfig] = useState<AIConfig | null>(null);
   const [windowFilters, setWindowFilters] = useState<ContinuousWindowFilters & { range: WindowRangeKey }>(defaultWindowFilters);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -131,10 +147,13 @@ function App() {
   const [compareTargetTask, setCompareTargetTask] = useState<Task | null>(null);
   const [taskInput, setTaskInput] = useState<CreateTaskInput>(defaultTaskInput);
   const [continuousInput, setContinuousInput] = useState<CreateContinuousProfileInput>(defaultContinuousInput);
+  const [aiConfigInput, setAIConfigInput] = useState<UpdateAIConfigInput>(defaultAIConfigInput);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [aiConfigFeedback, setAIConfigFeedback] = useState<FormFeedback | null>(null);
+  const activeNavRef = useRef<NavKey>(activeNav);
 
   const setActiveNav = (key: NavKey) => {
     setActiveNavState(key);
@@ -142,6 +161,10 @@ function App() {
       window.history.replaceState(null, "", `#${key}`);
     }
   };
+
+  useEffect(() => {
+    activeNavRef.current = activeNav;
+  }, [activeNav]);
 
   useEffect(() => {
     if (!getStoredAuthToken()) {
@@ -325,16 +348,28 @@ function App() {
         setLoading(true);
       }
 
-      const [agentData, taskData, profileData, auditData] = await Promise.all([
+      const [agentData, taskData, profileData, auditData, aiData] = await Promise.all([
         getAgents(),
         getTasks(),
         getContinuousProfiles(),
         getAuditLogs(),
+        getAIConfig(),
       ]);
       setAgents(agentData.agents);
       setTasks(taskData.tasks);
       setProfiles(profileData.profiles);
       setAuditLogs(auditData.audit_logs);
+      setAIConfig(aiData);
+      if (initial || activeNavRef.current !== "ai") {
+        setAIConfigInput({
+          enabled: aiData.enabled,
+          base_url: aiData.base_url,
+          api_key: "",
+          model: aiData.model,
+          timeout_sec: aiData.timeout_sec,
+          max_tokens: aiData.max_tokens,
+        });
+      }
       setError(null);
     } catch (overviewError) {
       const message = (overviewError as Error).message;
@@ -400,6 +435,40 @@ function App() {
       setError((toggleError as Error).message);
     }
   }
+
+  async function handleSaveAIConfig(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      setSubmitting(true);
+      setAIConfigFeedback(null);
+      const config = await updateAIConfig(aiConfigInput);
+      setAIConfig(config);
+      setAIConfigInput({
+        enabled: config.enabled,
+        base_url: config.base_url,
+        api_key: "",
+        model: config.model,
+        timeout_sec: config.timeout_sec,
+        max_tokens: config.max_tokens,
+      });
+      setError(null);
+      setAIConfigFeedback({
+        tone: "success",
+        message: config.enabled ? "LLM 配置已保存，后续完成的任务会尝试使用真实 AI 归因。" : "配置已保存，当前继续使用规则兜底。",
+      });
+    } catch (configError) {
+      const message = (configError as Error).message;
+      setError(null);
+      setAIConfigFeedback({ tone: "error", message });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const setAIConfigInputFromForm: React.Dispatch<React.SetStateAction<UpdateAIConfigInput>> = (value) => {
+    setAIConfigFeedback(null);
+    setAIConfigInput(value);
+  };
 
   const stats = useMemo(() => {
     const onlineAgents = agents.filter((agent) => agent.status === "ONLINE").length;
@@ -565,10 +634,23 @@ function App() {
                     submitting={submitting}
                     onSubmit={handleCreateContinuousProfile}
                     onToggleProfile={handleToggleContinuousProfile}
+                    aiConfig={aiConfig}
+                    onOpenAIConfig={() => setActiveNav("ai")}
                     onOpenTask={(taskId) => {
                       setSelectedTaskId(taskId);
                       setActiveNav("history");
                     }}
+                  />
+                ) : null}
+                {activeNav === "ai" ? (
+                  <AISettingsPage
+                    config={aiConfig}
+                    input={aiConfigInput}
+                    setInput={setAIConfigInputFromForm}
+                    feedback={aiConfigFeedback}
+                    submitting={submitting}
+                    tasks={tasks}
+                    onSubmit={handleSaveAIConfig}
                   />
                 ) : null}
                 {activeNav === "compare" ? (
@@ -1558,6 +1640,8 @@ function SchedulePage({
   submitting,
   onSubmit,
   onToggleProfile,
+  aiConfig,
+  onOpenAIConfig,
   onOpenTask,
 }: {
   profiles: ContinuousProfile[];
@@ -1574,6 +1658,8 @@ function SchedulePage({
   submitting: boolean;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onToggleProfile: (profileId: string, enabled: boolean) => Promise<void>;
+  aiConfig: AIConfig | null;
+  onOpenAIConfig: () => void;
   onOpenTask: (taskId: string) => void;
 }) {
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? null;
@@ -1622,7 +1708,31 @@ function SchedulePage({
         <div className="console-card schedule-plan-card">
           <CardHeader title="连续计划" />
           {profiles.length === 0 ? (
-            <EmptyBlock text="暂无连续计划，请先创建一个 5 分钟窗口计划。" />
+            <div className="schedule-empty-state">
+              <div className="schedule-empty-icon">
+                <Timer size={20} />
+              </div>
+              <div>
+                <strong>暂无连续剖析计划</strong>
+                <p>先用默认 mock-perf 创建一个 5 分钟窗口，验证时间轴和趋势分析；Linux / WSL2 验收时再切换 perf、eBPF 或 py-spy。</p>
+              </div>
+              <dl className="schedule-empty-kv">
+                <div>
+                  <dt>默认窗口</dt>
+                  <dd>{formatSeconds(continuousInput.interval_sec)}</dd>
+                </div>
+                <div>
+                  <dt>采样参数</dt>
+                  <dd>
+                    {continuousInput.sample_duration_sec}s / {continuousInput.sample_rate_hz}Hz
+                  </dd>
+                </div>
+                <div>
+                  <dt>采集器</dt>
+                  <dd>{continuousInput.collector_type}</dd>
+                </div>
+              </dl>
+            </div>
           ) : (
             <div className="schedule-plan-list">
               <div className="schedule-plan-head" aria-hidden="true">
@@ -1671,118 +1781,125 @@ function SchedulePage({
           )}
         </div>
 
-        <div className="console-card schedule-create-card">
-          <CardHeader title="创建连续计划" />
-          <div className="schedule-create-body">
-            <div className="schedule-form-head">
-              <div className="form-section-title">调度策略</div>
-              <label>
-                <span>计划名称</span>
-                <input
-                  type="text"
-                  value={continuousInput.name}
-                  onChange={(event) => setContinuousInput((current) => ({ ...current, name: event.target.value }))}
-                />
-              </label>
-              <div className="schedule-mode-row">
-                <span>调度方式</span>
-                <div className="segmented-control" role="group" aria-label="调度方式">
-                  <button
-                    type="button"
-                    className={scheduleMode === "interval" ? "active" : ""}
-                    onClick={() => setContinuousInput((current) => ({ ...current, schedule_mode: "interval" }))}
-                  >
-                    固定间隔
-                  </button>
-                  <button
-                    type="button"
-                    className={scheduleMode === "cron" ? "active" : ""}
-                    onClick={() => setContinuousInput((current) => ({ ...current, schedule_mode: "cron" }))}
-                  >
-                    Cron
-                  </button>
-                </div>
-              </div>
-              {scheduleMode === "interval" ? (
+        <div className="schedule-side-stack">
+          <div className="console-card schedule-ai-card">
+            <CardHeader title="智能分析配置" action="配置 LLM" onAction={onOpenAIConfig} />
+            <AIConfigSummary config={aiConfig} compact />
+          </div>
+
+          <div className="console-card schedule-create-card">
+            <CardHeader title="创建连续计划" />
+            <div className="schedule-create-body">
+              <div className="schedule-form-head">
+                <div className="form-section-title">调度策略</div>
                 <label>
-                  <span>窗口间隔</span>
-                  <select
-                    value={continuousInput.interval_sec}
-                    onChange={(event) =>
-                      setContinuousInput((current) => ({ ...current, interval_sec: Number(event.target.value) }))
-                    }
-                  >
-                    <option value={300}>5 分钟</option>
-                    <option value={600}>10 分钟</option>
-                    <option value={1800}>30 分钟</option>
-                  </select>
-                </label>
-              ) : (
-                <label>
-                  <span>Cron 表达式</span>
+                  <span>计划名称</span>
                   <input
                     type="text"
-                    value={continuousInput.cron_expression ?? ""}
-                    onChange={(event) =>
-                      setContinuousInput((current) => ({ ...current, cron_expression: event.target.value }))
-                    }
-                    placeholder="*/5 * * * *"
+                    value={continuousInput.name}
+                    onChange={(event) => setContinuousInput((current) => ({ ...current, name: event.target.value }))}
                   />
                 </label>
-              )}
-              <label>
-                <span>错峰启动</span>
-                <select
-                  value={continuousInput.stagger_sec}
-                  onChange={(event) =>
-                    setContinuousInput((current) => ({ ...current, stagger_sec: Number(event.target.value) }))
-                  }
-                >
-                  <option value={0}>不延迟</option>
-                  <option value={15}>15 秒</option>
-                  <option value={30}>30 秒</option>
-                  <option value={60}>60 秒</option>
-                  <option value={120}>120 秒</option>
-                </select>
-              </label>
-              <div className="schedule-hint-strip">
-                <span>{scheduleMode === "cron" ? "cron" : "interval"}</span>
-                <strong>{previewSchedule(continuousInput)}</strong>
+                <div className="schedule-mode-row">
+                  <span>调度方式</span>
+                  <div className="segmented-control" role="group" aria-label="调度方式">
+                    <button
+                      type="button"
+                      className={scheduleMode === "interval" ? "active" : ""}
+                      onClick={() => setContinuousInput((current) => ({ ...current, schedule_mode: "interval" }))}
+                    >
+                      固定间隔
+                    </button>
+                    <button
+                      type="button"
+                      className={scheduleMode === "cron" ? "active" : ""}
+                      onClick={() => setContinuousInput((current) => ({ ...current, schedule_mode: "cron" }))}
+                    >
+                      Cron
+                    </button>
+                  </div>
+                </div>
+                {scheduleMode === "interval" ? (
+                  <label>
+                    <span>窗口间隔</span>
+                    <select
+                      value={continuousInput.interval_sec}
+                      onChange={(event) =>
+                        setContinuousInput((current) => ({ ...current, interval_sec: Number(event.target.value) }))
+                      }
+                    >
+                      <option value={300}>5 分钟</option>
+                      <option value={600}>10 分钟</option>
+                      <option value={1800}>30 分钟</option>
+                    </select>
+                  </label>
+                ) : (
+                  <label>
+                    <span>Cron 表达式</span>
+                    <input
+                      type="text"
+                      value={continuousInput.cron_expression ?? ""}
+                      onChange={(event) =>
+                        setContinuousInput((current) => ({ ...current, cron_expression: event.target.value }))
+                      }
+                      placeholder="*/5 * * * *"
+                    />
+                  </label>
+                )}
+                <label>
+                  <span>错峰启动</span>
+                  <select
+                    value={continuousInput.stagger_sec}
+                    onChange={(event) =>
+                      setContinuousInput((current) => ({ ...current, stagger_sec: Number(event.target.value) }))
+                    }
+                  >
+                    <option value={0}>不延迟</option>
+                    <option value={15}>15 秒</option>
+                    <option value={30}>30 秒</option>
+                    <option value={60}>60 秒</option>
+                    <option value={120}>120 秒</option>
+                  </select>
+                </label>
+                <div className="schedule-hint-strip">
+                  <span>{scheduleMode === "cron" ? "cron" : "interval"}</span>
+                  <strong>{previewSchedule(continuousInput)}</strong>
+                </div>
               </div>
-            </div>
-            <div className="schedule-task-section">
-              <div className="form-section-title">采集参数</div>
-              <TaskForm
-                agents={agents}
-                taskInput={{
-                  target_pid: continuousInput.target_pid,
-                  target_agent_id: continuousInput.target_agent_id,
-                  sample_duration_sec: continuousInput.sample_duration_sec,
-                  sample_rate_hz: continuousInput.sample_rate_hz,
-                  collector_type: continuousInput.collector_type,
-                }}
-                setTaskInput={(updater) =>
-                  setContinuousInput((current) => {
-                    const nextBase =
-                      typeof updater === "function"
-                        ? updater({
-                            target_pid: current.target_pid,
-                            target_agent_id: current.target_agent_id,
-                            sample_duration_sec: current.sample_duration_sec,
-                            sample_rate_hz: current.sample_rate_hz,
-                            collector_type: current.collector_type,
-                          })
-                        : updater;
-                    return {
-                      ...current,
-                      ...nextBase,
-                    };
-                  })
-                }
-                submitting={submitting}
-                onSubmit={onSubmit}
-                mode="continuous"
-              />
+              <div className="schedule-task-section">
+                <div className="form-section-title">采集参数</div>
+                <TaskForm
+                  agents={agents}
+                  taskInput={{
+                    target_pid: continuousInput.target_pid,
+                    target_agent_id: continuousInput.target_agent_id,
+                    sample_duration_sec: continuousInput.sample_duration_sec,
+                    sample_rate_hz: continuousInput.sample_rate_hz,
+                    collector_type: continuousInput.collector_type,
+                  }}
+                  setTaskInput={(updater) =>
+                    setContinuousInput((current) => {
+                      const nextBase =
+                        typeof updater === "function"
+                          ? updater({
+                              target_pid: current.target_pid,
+                              target_agent_id: current.target_agent_id,
+                              sample_duration_sec: current.sample_duration_sec,
+                              sample_rate_hz: current.sample_rate_hz,
+                              collector_type: current.collector_type,
+                            })
+                          : updater;
+                      return {
+                        ...current,
+                        ...nextBase,
+                      };
+                    })
+                  }
+                  submitting={submitting}
+                  onSubmit={onSubmit}
+                  mode="continuous"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -2040,6 +2157,274 @@ function BaselineBadge({ series }: { series: ContinuousTrend["series"][number] }
       {delta.toFixed(1)}%
     </span>
   );
+}
+
+function AISettingsPage({
+  config,
+  input,
+  setInput,
+  feedback,
+  submitting,
+  tasks,
+  onSubmit,
+}: {
+  config: AIConfig | null;
+  input: UpdateAIConfigInput;
+  setInput: React.Dispatch<React.SetStateAction<UpdateAIConfigInput>>;
+  feedback: FormFeedback | null;
+  submitting: boolean;
+  tasks: Task[];
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const aiTaskCount = tasks.filter((task) => task.result?.attribution?.analysis_engine === "ai").length;
+  const fallbackTaskCount = tasks.filter((task) => task.result?.attribution?.fallback_reason).length;
+  const aiState = config ? aiConfigState(config) : null;
+
+  return (
+    <div className="page-stack">
+      <section className="page-title-row">
+        <div>
+          <h1>智能分析</h1>
+          <p>配置 OpenAI 兼容的 LLM 归因通道。任务完成后，Server 会用 TopN、火焰图摘要和资源时间线生成可追踪建议。</p>
+        </div>
+      </section>
+
+      <section className="ai-overview-strip">
+        <div>
+          <span>当前状态</span>
+          <strong>{aiState?.label ?? "加载中"}</strong>
+        </div>
+        <div>
+          <span>API Key</span>
+          <strong>{config?.api_key_configured ? "已配置" : "未配置"}</strong>
+        </div>
+        <div>
+          <span>模型</span>
+          <strong>{config?.model ?? input.model}</strong>
+        </div>
+        <div>
+          <span>AI 归因任务</span>
+          <strong>{aiTaskCount}</strong>
+        </div>
+        <div>
+          <span>规则兜底</span>
+          <strong>{fallbackTaskCount}</strong>
+        </div>
+      </section>
+
+      <section className="content-grid ai-grid">
+        <div className="console-card ai-config-card">
+          <CardHeader title="LLM 接入配置" />
+          <form className="ai-config-form" onSubmit={onSubmit}>
+            <div className="ai-toggle-row">
+              <div>
+                <strong>启用真实 AI 归因</strong>
+                <span>关闭时仍会使用内置规则生成建议；开启后必须配置 API Key。</span>
+              </div>
+              <label className="switch-control">
+                <input
+                  type="checkbox"
+                  checked={input.enabled}
+                  onChange={(event) => setInput((current) => ({ ...current, enabled: event.target.checked }))}
+                />
+                <span />
+              </label>
+            </div>
+
+            {feedback ? (
+              <div className={`ai-form-feedback ${feedback.tone}`} role={feedback.tone === "error" ? "alert" : "status"}>
+                {feedback.tone === "error" ? <AlertCircle size={15} /> : <CheckCircle2 size={15} />}
+                <span>{feedback.message}</span>
+              </div>
+            ) : null}
+
+            <label>
+              <span>Base URL</span>
+              <input
+                type="url"
+                value={input.base_url}
+                onChange={(event) => setInput((current) => ({ ...current, base_url: event.target.value }))}
+                placeholder="https://api.openai.com/v1"
+              />
+            </label>
+            <label>
+              <span>API Key</span>
+              <input
+                type="password"
+                value={input.api_key}
+                onChange={(event) => setInput((current) => ({ ...current, api_key: event.target.value }))}
+                placeholder={config?.api_key_configured ? `${config.api_key_display}（留空不会保存旧值）` : "sk-..."}
+              />
+            </label>
+            <div className="form-line">
+              <label>
+                <span>模型</span>
+                <input
+                  type="text"
+                  value={input.model}
+                  onChange={(event) => setInput((current) => ({ ...current, model: event.target.value }))}
+                  placeholder="gpt-4o-mini"
+                />
+              </label>
+              <label>
+                <span>超时（秒）</span>
+                <input
+                  type="number"
+                  min={3}
+                  max={120}
+                  value={input.timeout_sec}
+                  onChange={(event) => setInput((current) => ({ ...current, timeout_sec: Number(event.target.value) }))}
+                />
+              </label>
+            </div>
+            <label>
+              <span>最大输出 Token</span>
+              <input
+                type="number"
+                min={128}
+                max={4096}
+                value={input.max_tokens}
+                onChange={(event) => setInput((current) => ({ ...current, max_tokens: Number(event.target.value) }))}
+              />
+            </label>
+            <div className="form-actions">
+              <button className="primary-button" type="submit" disabled={submitting}>
+                {submitting ? "保存中..." : "保存配置"}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div className="console-card ai-status-card">
+          <CardHeader title="运行状态" />
+          <AIConfigSummary config={config} />
+        </div>
+      </section>
+
+      <section className="console-card ai-explain-card">
+        <CardHeader title="归因链路" />
+        <div className="ai-flow-grid">
+          <div>
+            <span>1</span>
+            <strong>Analyzer 产物</strong>
+            <p>读取 TopN、资源时间线和采集参数。</p>
+          </div>
+          <div>
+            <span>2</span>
+            <strong>规则基线</strong>
+            <p>先生成可解释的兜底结论和证据。</p>
+          </div>
+          <div>
+            <span>3</span>
+            <strong>LLM 归因</strong>
+            <p>启用后调用配置模型，返回 JSON 建议。</p>
+          </div>
+          <div>
+            <span>4</span>
+            <strong>结果落库</strong>
+            <p>Web 详情页展示来源、置信度和工具轨迹。</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AIConfigSummary({ config, compact = false }: { config: AIConfig | null; compact?: boolean }) {
+  if (!config) {
+    return <LoadingBlock />;
+  }
+
+  const aiState = aiConfigState(config);
+
+  return (
+    <div className={`ai-config-summary ${compact ? "compact" : ""}`}>
+      <div className="ai-status-banner">
+        <div className="attribution-icon">
+          <BrainCircuit size={18} />
+        </div>
+        <div>
+          <span>{config.provider}</span>
+          <strong>{aiState.summary}</strong>
+        </div>
+        <span className={`ai-mode-tag ${aiState.tone}`}>{aiState.label}</span>
+      </div>
+
+      <dl className="info-list ai-info-list">
+        <div>
+          <dt>Base URL</dt>
+          <dd>{config.base_url}</dd>
+        </div>
+        <div>
+          <dt>Endpoint</dt>
+          <dd>{config.endpoint}</dd>
+        </div>
+        <div>
+          <dt>模型</dt>
+          <dd>{config.model}</dd>
+        </div>
+        <div>
+          <dt>密钥状态</dt>
+          <dd>{config.api_key_configured ? config.api_key_display || "已配置" : "未配置"}</dd>
+        </div>
+        {!compact ? (
+          <>
+            <div>
+              <dt>超时</dt>
+              <dd>{config.timeout_sec}s</dd>
+            </div>
+            <div>
+              <dt>最大 Token</dt>
+              <dd>{config.max_tokens}</dd>
+            </div>
+            <div>
+              <dt>配置来源</dt>
+              <dd>{config.source}</dd>
+            </div>
+            <div>
+              <dt>更新时间</dt>
+              <dd>{config.updated_at ? formatDate(config.updated_at) : "环境变量默认值"}</dd>
+            </div>
+          </>
+        ) : null}
+      </dl>
+
+      {!compact && config.notes?.length ? (
+        <div className="ai-note-list">
+          {config.notes.map((note) => (
+            <div key={note}>
+              <CheckCircle2 size={14} />
+              <span>{note}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function aiConfigState(config: AIConfig) {
+  if (config.enabled && config.api_key_configured) {
+    return {
+      label: "已启用",
+      summary: "真实 AI 归因已启用",
+      tone: "enabled",
+    };
+  }
+
+  if (config.enabled) {
+    return {
+      label: "待配置",
+      summary: "AI 已打开，等待 API Key",
+      tone: "warning",
+    };
+  }
+
+  return {
+    label: "规则兜底",
+    summary: "当前使用规则兜底",
+    tone: "standby",
+  };
 }
 
 function CreateTaskDialog(props: {
