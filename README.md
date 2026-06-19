@@ -1,564 +1,262 @@
 # Mini-Drop
 
-Mini-Drop is a documentation-first implementation of a small Linux performance
-diagnosis platform. The repository now includes a runnable mock vertical slice:
+Mini-Drop 是一个面向 Linux 性能诊断场景的多组件 Demo。它按“Web UI + Server + Agent + Analyzer”的架构实现了从创建采样任务、Agent 采集、Analyzer 生成火焰图/热点数据，到 Web 展示和智能归因的闭环。
 
-`Web UI -> API Server -> Agent -> mock collector -> Analyzer -> flamegraph -> Web UI`
+当前仓库已经具备可运行的 mock 演示链路：
 
-The mock path keeps the real system contract intact:
+```text
+Web UI -> API Server -> Agent -> Collector -> Analyzer -> Flamegraph/TopN -> Web UI
+```
 
-1. A user creates a profiling task from the Web UI.
-2. The API Server persists the task and every status transition.
-3. The Agent heartbeats, claims the task, and writes a mock raw artifact.
-4. The Analyzer generates a flamegraph SVG and TopN hotspot JSON.
-5. The Web UI shows agent health, task history, audit logs, and analysis output.
-6. The plan page can create a continuous profiling window set and reuse the same task/result flow.
+这条 mock 链路保留了真实系统的协议和状态机：
 
-## Current Components
+1. 用户在 Web 控制台创建 Profiling 任务。
+2. API Server 持久化任务，并记录每一次状态迁移。
+3. Agent 每 5 秒心跳，领取任务，执行采集器。
+4. Analyzer 把原始采集产物转换为 `flamegraph.svg` 和 `topn.json`。
+5. Web 展示 Agent 健康、任务状态、审计日志、火焰图、TopN 热点和归因建议。
+6. 连续剖析页面可以创建周期性窗口，复用同一套任务和结果展示链路。
 
-- `apps/api-server`: Go + Gin + GORM + SQLite API server
-- `apps/agent`: Go mock agent with heartbeat and task loop
-- `apps/analyzer`: Python CLI that generates mock flamegraphs and hotspots
-- `apps/web`: React + Vite + TypeScript operations dashboard
-- `deploy/docker-compose.yml`: one-command PostgreSQL + MinIO demo stack
-- `scripts/demo`: smoke test and mock target helpers
+## 当前能力
 
-## Quick Start
+- Docker Compose 一键启动 PostgreSQL、MinIO、API Server、Agent 和 Web。
+- Web 登录、Agent 列表、任务创建、任务详情、审计日志、火焰图、TopN 热点。
+- 任务状态机：`PENDING -> RUNNING -> UPLOADING -> DONE / FAILED`，每次迁移都落库并带 `reason`。
+- Agent 心跳和离线扫描：30 秒无心跳判定离线，恢复时写审计日志。
+- 本地 mock collector：Windows / Docker Desktop 可稳定演示。
+- Linux / WSL2 真实采集器：`perf`、`ebpf-syscall`、`py-spy`，带 preflight 和 blocked 报告。
+- Analyzer 支持 mock JSON、`perf.data`、eBPF syscall 直方图、py-spy raw stack。
+- Continuous Profiling：创建周期性窗口、查看窗口状态、热点趋势和基线漂移。
+- AI 归因入口：支持 OpenAI-compatible LLM 配置，未配置或失败时回退到规则归因。
+- 工程基线：Go / Python 单测、覆盖率报告、Compose smoke、最终验收 preflight 和提交材料生成脚本。
 
-### Docker demo
+## 目录结构
 
-On Windows PowerShell, the most direct one-command path is:
+```text
+apps/
+  api-server/      Go + Gin + GORM API 服务
+  agent/           Go Agent，负责心跳、任务领取和采集器调度
+  analyzer/        Python CLI，负责产物解析和可视化数据生成
+  web/             React + Vite + TypeScript 控制台
+deploy/
+  docker-compose.yml
+docs/
+  design/          设计文档
+  references/      题目与复刻参考
+scripts/demo/      启动、smoke、验收和证据生成脚本
+```
+
+## 快速启动
+
+### Windows PowerShell 推荐方式
+
+如果机器上没有 `make`，直接运行 PowerShell 脚本：
 
 ```powershell
 .\scripts\demo\start-compose.ps1
 ```
 
-The script starts the compose stack and performs a smoke task that verifies
-MinIO signed artifact URLs. By default it creates two completed mock tasks so
-the task-comparison page is ready for recording immediately.
+脚本会启动 Compose 栈，并自动跑一次 smoke 任务。默认会创建可用于演示的 mock 任务和结果。
 
-Make is also supported:
+启动后打开：
+
+- Web 控制台：[http://localhost](http://localhost)
+- 登录账号：`demo` / `minidrop`
+- API 健康检查：[http://localhost:8080/healthz](http://localhost:8080/healthz)
+- MinIO 控制台：[http://localhost:9001](http://localhost:9001)，账号 `minidrop` / `minidrop123`
+
+停止 Compose 栈：
+
+```powershell
+.\scripts\demo\stop-compose.ps1
+```
+
+### 使用 Make
+
+如果本机已经安装 `make`：
 
 ```bash
 make demo
 ```
 
-This compose stack starts five services: PostgreSQL, MinIO, API Server, Agent,
-and Web. The Agent and API share a local artifact volume for simple handoff;
-when the API returns artifact URLs it uploads the file to MinIO and returns a
-temporary signed URL.
-
-Then open:
-
-- Web UI: [http://localhost](http://localhost)
-- Console login: `demo` / `minidrop`
-- API health: [http://localhost:8080/healthz](http://localhost:8080/healthz)
-- MinIO console: [http://localhost:9001](http://localhost:9001), login `minidrop` / `minidrop123`
-
-The console login is enforced by the API. Console routes such as
-`/api/v1/agents`, `/api/v1/tasks`, continuous profiling, and audit logs require
-an `Authorization: Bearer ...` token returned by `/api/v1/auth/login`. You can
-override the demo credentials with `MINIDROP_AUTH_USERNAME`,
-`MINIDROP_AUTH_PASSWORD`, `MINIDROP_AUTH_TOKEN_SECRET`, and
-`MINIDROP_AUTH_SESSION_TTL_SEC`.
-
-If you already have a local API or Agent running on `8080`, start the compose
-stack on alternate ports first:
+停止：
 
 ```bash
-MINIDROP_API_PORT=18080 MINIDROP_WEB_PORT=14173 MINIDROP_MINIO_PORT=19000 MINIDROP_MINIO_CONSOLE_PORT=19001 make demo
-```
-
-The compose helpers print matching snapshot, evidence, checklist, submission,
-and final preflight commands with the same ports. Use those printed commands
-when the stack is not on the default `8080` / `80` / `9000` ports.
-
-For the compose-backed mock demo, use `PID 1` in the task form. The Agent
-shares the host PID namespace, so Linux/WSL2 can use real host PIDs for
-`collector_type=perf`; Windows Docker Desktop should use the default
-`mock-perf` collector.
-
-To verify the compose stack from the command line:
-
-```bash
-make compose-health
-make smoke-demo
-make smoke-demo-fail
-make smoke-demo-offline
-```
-
-`make compose-health` verifies that PostgreSQL, MinIO, API Server, Web, Agent,
-and the bundled demo target are running, and that the published API/Web/MinIO
-ports match the current demo configuration.
-
-To write the coverage evidence required by the engineering baseline:
-
-```bash
-make coverage
-```
-
-To write the scored attribution evaluation report:
-
-```bash
-make attribution-evaluation
-```
-
-To assert that result artifacts are served through MinIO signed URLs:
-
-```bash
-make smoke-demo-minio
-```
-
-To print a compact acceptance snapshot before recording or presenting the demo:
-
-```bash
-make acceptance-snapshot
-```
-
-To write a page-by-page recording checklist:
-
-```bash
-make recording-checklist
-```
-
-To write a submission notes template with screenshot names and verification
-commands:
-
-```bash
-make submission-notes
-```
-
-To capture the screenshot evidence referenced by `submission-notes`:
-
-```bash
-make capture-submission-artifacts
-```
-
-This writes the full 10-image manifest under
-`artifacts/submission-screenshots/`, including Web pages, evidence files, the
-coverage report, and a MinIO console proof image.
-
-The attribution evaluation report is written to
-`artifacts/attribution-evaluation-report.md` and is also generated by
-`make final-preflight`.
-
-To run the full final preflight before recording:
-
-```bash
-make final-preflight
-```
-
-When `-IncludeRealPreflight` or `--include-real-preflight` is used, the final
-preflight also writes `artifacts/real-collector-preflight.md` and records a
-non-blocking real collector readiness step. A `BLOCKED` result is acceptable for
-the Windows compose recording path when the report names the missing WSL2/Linux
-tools or permissions.
-
-For the recommended 10 to 15 minute recording flow, use the final demo script:
-
-- [Final demo script](docs/demo-script.md)
-
-On Windows PowerShell without `make`, run the helper directly:
-
-```powershell
-.\scripts\demo\check-compose-stack.ps1
-.\scripts\demo\acceptance-snapshot.ps1
-.\scripts\demo\write-recording-checklist.ps1
-.\scripts\demo\write-submission-notes.ps1
-.\scripts\demo\capture-submission-artifacts.ps1
-python .\scripts\demo\write_attribution_evaluation.py
-.\scripts\demo\final-preflight.ps1
-```
-
-For an alternate-port compose stack:
-
-```powershell
-.\scripts\demo\check-compose-stack.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
-.\scripts\demo\acceptance-snapshot.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
-.\scripts\demo\write-demo-evidence.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000
-.\scripts\demo\capture-submission-artifacts.ps1 -WebPort 14173 -MinioConsolePort 19001
-```
-
-On Linux / WSL2 without `make`, use the Bash helper:
-
-```bash
-bash ./scripts/demo/check-compose-stack.sh
-bash ./scripts/demo/acceptance-snapshot.sh
-```
-
-If the compose stack is already running but does not yet have two completed
-tasks for comparison, seed them and print the snapshot in one command:
-
-```powershell
-.\scripts\demo\acceptance-snapshot.ps1 -SeedTasks
-```
-
-```bash
-bash ./scripts/demo/acceptance-snapshot.sh --seed-tasks
-```
-
-The snapshot checks API health, Web reachability, online Agents, completed
-tasks, MinIO signed result URLs, whether the Web task-comparison page has at
-least two completed TopN-backed tasks to compare, and continuous profiling
-window/trend readiness.
-
-If `8080` or `80` is already used by a local run, start the compose stack on
-alternate host ports:
-
-```bash
-MINIDROP_API_PORT=18080 MINIDROP_WEB_PORT=14173 MINIDROP_MINIO_PORT=19000 MINIDROP_MINIO_CONSOLE_PORT=19001 make demo
-MINIDROP_API_PORT=18080 make smoke-demo
-MINIDROP_API_PORT=18080 make smoke-demo-fail
-MINIDROP_API_PORT=18080 MINIDROP_WEB_PORT=14173 MINIDROP_MINIO_PORT=19000 make acceptance-snapshot
-```
-
-For the agent-offline smoke path, start compose with a shorter offline window:
-
-```bash
-MINIDROP_API_PORT=18080 MINIDROP_WEB_PORT=14173 MINIDROP_OFFLINE_AFTER_SEC=6 MINIDROP_OFFLINE_SCAN_SEC=2 make demo
-MINIDROP_API_PORT=18080 make smoke-demo-offline
-```
-
-To stop the stack:
-
-```bash
-.\scripts\demo\stop-compose.ps1
-# or
 make demo-down
 ```
 
-### Local development
+### 端口冲突处理
 
-On Windows PowerShell, the fastest local start path is:
+如果 `8080`、`80`、`9000` 或 `9001` 已被占用，可以使用备用端口：
+
+```powershell
+.\scripts\demo\start-compose.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
+```
+
+备用端口对应：
+
+- Web 控制台：[http://localhost:14173](http://localhost:14173)
+- API 健康检查：[http://localhost:18080/healthz](http://localhost:18080/healthz)
+- MinIO 控制台：[http://localhost:19001](http://localhost:19001)
+
+如果使用 Make，也可以通过环境变量指定：
+
+```bash
+MINIDROP_API_PORT=18080 MINIDROP_WEB_PORT=14173 MINIDROP_MINIO_PORT=19000 MINIDROP_MINIO_CONSOLE_PORT=19001 make demo
+```
+
+## Web 使用流程
+
+1. 打开 Web 控制台并登录。
+2. 在“我的机器”确认 `drop_agent` 为 `ONLINE`。
+3. 进入“计划任务”或任务创建区域。
+4. Windows / Docker 演示选择 `mock-perf`，PID 可使用 `1`。
+5. Linux / WSL2 真机采集选择 `perf`、`ebpf-syscall` 或 `py-spy`，PID 使用目标进程 PID。
+6. 创建任务后观察状态从 `PENDING` 进入 `RUNNING`、`UPLOADING`，最终为 `DONE` 或 `FAILED`。
+7. 打开任务详情查看火焰图、TopN 热点、原始产物下载链接和 AI/规则归因建议。
+
+## 本地开发启动
+
+### Windows 本地 mock 链路
 
 ```powershell
 .\scripts\demo\start-local.ps1
 ```
 
-The script starts the API, mock target, Agent, and Web UI. It prints the target
-PID to use in the task form.
+脚本会启动 API、mock target、Agent 和 Web，并打印任务表单里可使用的目标 PID。
 
-If the console stays busy, that is normal; the processes are now running in the
-background from the same terminal session.
-
-To stop all local demo processes:
+停止：
 
 ```powershell
 .\scripts\demo\stop-local.ps1
 ```
 
-On WSL2 Ubuntu or another Linux host, use the bash version:
+### Linux / WSL2 本地链路
 
 ```bash
 make local
 ```
 
-If a native Linux Go toolchain is not installed, the script downloads a local
-Go toolchain into `tmp/toolchains/`. It also runs `npm ci` for the Web app when
-the Linux dependency cache is missing, storing it under `tmp/web-runtime/`
-so it does not conflict with Windows `node_modules`.
-
-To stop it:
+停止：
 
 ```bash
 make local-down
 ```
 
-The Linux script also supports the real collector smoke path:
-
-```bash
-COLLECTOR_TYPE=perf bash ./scripts/demo/start-local.sh
-MINIDROP_API_BASE_URL=http://127.0.0.1:8080 python3 scripts/demo/smoke_e2e.py <printed-pid> agt_local perf
-```
-
-If port `8080` or `5173` is already occupied, choose alternate ports:
+如果端口被占用：
 
 ```bash
 API_ADDR=127.0.0.1:18080 WEB_PORT=15173 bash ./scripts/demo/start-local.sh
 MINIDROP_API_BASE_URL=http://127.0.0.1:18080 python3 scripts/demo/smoke_e2e.py <printed-pid> agt_local mock-perf
 ```
 
-Manual startup is also available:
+## 真实采集器
 
-1. Start the API server:
+Windows 和 Docker Desktop 默认走 `mock-perf`，真实采集器建议在 WSL2 Ubuntu 或 Linux 主机上验收。
 
-```bash
-go run ./apps/api-server
-```
+### perf
 
-2. Start a target process in another terminal:
-
-```bash
-python scripts/demo/mock_target.py
-```
-
-3. Start the agent:
-
-```bash
-go run ./apps/agent
-```
-
-4. Start the web app:
-
-```bash
-cd apps/web
-npm install
-npm run dev
-```
-
-5. Use the PID of the `mock_target.py` process in the task form.
-
-## Verification
-
-### Tests
-
-```bash
-make test
-```
-
-Current automated coverage includes:
-
-- task transition validation
-- create-task validation
-- task lifecycle event persistence
-- agent offline / recovery audit log flow
-- agent offline active-task failure
-- rule-based attribution result from TopN hotspots
-- analyzer mock JSON and `perf script` parsing
-- compose smoke task helper
-
-`make coverage` writes `artifacts/coverage-report.md` and enforces the required
-50% coverage gate for the API orchestration layer, shared validation/status
-contracts, and Analyzer transformation logic. Agent coverage is reported in the
-same file as observational because the real collector paths depend on host
-profiling tools and permissions.
-
-### Local smoke helper
-
-After starting the API and Agent locally, run:
-
-```bash
-python scripts/demo/smoke_e2e.py <pid> [agent_id]
-```
-
-This creates a task and polls until it reaches `DONE` or `FAILED`.
-For an expected failure path:
-
-```bash
-python scripts/demo/smoke_e2e.py 999999 agt_local mock-perf --expect-status FAILED --expect-reason-contains "target pid not found"
-```
-
-### Real `perf` collector on WSL2 / Linux
-
-The default local demo still uses `mock-perf`, which works on Windows. To run
-the real collector, start the same services inside WSL2 Ubuntu or another Linux
-host, then create a task with `collector_type=perf` in the Web form.
-
-Install `perf` first. On Ubuntu this is usually one of:
+安装依赖：
 
 ```bash
 sudo apt-get update
 sudo apt-get install linux-tools-common linux-tools-generic
 ```
 
-If profiling is blocked by kernel permissions, lower the paranoid setting for
-the demo session:
+如果内核权限阻止采集，可在演示会话中降低限制：
 
 ```bash
 sudo sysctl kernel.perf_event_paranoid=1
 ```
 
-Before starting the real collector, run the environment check inside WSL2 /
-Linux:
-
-```bash
-make real-preflight
-make real-check
-make real-smoke-report
-python3 scripts/demo/check_perf_env.py
-python3 scripts/demo/check_perf_env.py --pid <target-pid>
-```
-
-`make real-check` summarizes `perf`, `ebpf-syscall`, and `py-spy` readiness.
-The individual checks report Linux/runtime, tool availability, permission
-settings such as `perf_event_paranoid`, target PID existence, and a short smoke
-command when a PID is provided.
-`make real-preflight` writes `artifacts/real-collector-preflight.md` with the
-same readiness output plus the exact install and permission commands to apply.
-On Windows it enters WSL2 automatically when `wsl.exe` is available.
-It treats missing host dependencies as a generated `BLOCKED` report rather than
-a script crash; use `.\scripts\demo\prepare-real-collectors.ps1 -Strict` or
-`bash ./scripts/demo/prepare-real-collectors.sh --strict` when you want blocked
-collectors to fail CI.
-`make real-smoke-report` writes `artifacts/real-smoke-report.md`. By default it
-checks `perf,ebpf-syscall,py-spy` and classifies each collector as `BLOCKED`,
-`READY`, `DONE`, or `FAILED`. `BLOCKED` means API, Agent, PID, Linux tools, or
-permissions are not ready; `READY` means preflight passed but smoke was skipped;
-`DONE` means the real smoke task completed; `FAILED` means preflight passed but
-the smoke task failed. After starting the Linux local demo, run
-`bash ./scripts/demo/write-real-smoke-report.sh --collectors perf` without
-`--skip-smoke` to include the real smoke command output for a single collector.
-
-The smoke helper can also request the real collector:
+启动并 smoke：
 
 ```bash
 COLLECTOR_TYPE=perf bash ./scripts/demo/start-local.sh
-MINIDROP_API_BASE_URL=http://127.0.0.1:8080 python3 scripts/demo/smoke_e2e.py <pid> [agent_id] perf
-```
-
-The real path writes `artifacts/<task_id>/raw/perf.data`, runs
-`perf script`, and generates the same `flamegraph.svg` and `topn.json` result
-files as the mock path.
-
-When `COLLECTOR_TYPE=perf`, the Linux start script switches to
-`scripts/demo/perf_workload.py`, a CPU-burning target that produces a clearer
-hotspot stack for the demo.
-
-For a one-command WSL2/Linux smoke after `bash ./scripts/demo/start-local.sh`:
-
-```bash
 make smoke-real COLLECTOR_TYPE=perf
-make smoke-real COLLECTOR_TYPE=ebpf-syscall
-make smoke-real COLLECTOR_TYPE=py-spy
 ```
 
-The helper reuses `tmp/local-demo/target.pid` by default and runs the matching
-environment check before creating the task. It also verifies API `/healthz`,
-that the selected Agent is `ONLINE`, and that a target PID is available before
-submitting the task, so missing runtime pieces produce actionable next steps
-instead of a low-level stack trace.
+真实 `perf` 路径会生成：
 
-### eBPF syscall collector on WSL2 / Linux
+- `artifacts/<task_id>/raw/perf.data`
+- `artifacts/<task_id>/analysis/perf.script.txt`
+- `artifacts/<task_id>/analysis/collapsed.txt`
+- `artifacts/<task_id>/analysis/flamegraph.svg`
+- `artifacts/<task_id>/analysis/topn.json`
 
-Mini-Drop also has a first P2 collector, `collector_type=ebpf-syscall`. It uses
-`bpftrace` tracepoints to count system calls for one target PID and writes the
-raw output to `artifacts/<task_id>/raw/ebpf.syscalls.txt`. Analyzer converts the
-histogram into the same `topn.json` contract and Web shows an `eBPF 分布` tab.
+### eBPF syscall
 
-Install `bpftrace` inside WSL2 Ubuntu or another Linux host:
+安装：
 
 ```bash
 sudo apt-get update
 sudo apt-get install bpftrace
 ```
 
-Run the eBPF preflight before creating a task:
+检查：
 
 ```bash
-python3 scripts/demo/check_ebpf_env.py
 python3 scripts/demo/check_ebpf_env.py --pid <target-pid>
 ```
 
-For the live demo path, start the local stack with the eBPF collector selected:
+启动并 smoke：
 
 ```bash
 COLLECTOR_TYPE=ebpf-syscall bash ./scripts/demo/start-local.sh
+make smoke-real COLLECTOR_TYPE=ebpf-syscall
 ```
 
-In this mode the script starts `scripts/demo/ebpf_workload.sh` instead of the
-quiet Python target. The workload runs `dd if=/dev/zero of=/dev/null` in a loop,
-prints its PID, and continuously produces `read` / `write` syscalls so the Web
-`eBPF 分布` tab shows a visible histogram change. You can smoke-test that path
-from the terminal:
+该采集器使用 bpftrace syscall tracepoint，输出 syscall 分布并在 Web 中展示 eBPF 直方图。
 
-```bash
-MINIDROP_API_BASE_URL=http://127.0.0.1:8080 python3 scripts/demo/smoke_e2e.py <pid> agt_local ebpf-syscall
-```
+### py-spy
 
-To tune the demo workload:
-
-```bash
-MINIDROP_EBPF_DD_BS=64K COLLECTOR_TYPE=ebpf-syscall bash ./scripts/demo/start-local.sh
-```
-
-The collector may require root, mounted tracefs/debugfs, and a kernel with
-syscall tracepoints. Windows local development should keep using `mock-perf`;
-selecting `ebpf-syscall` outside Linux fails clearly with
-`ebpf-syscall collector requires linux`.
-
-### Python user-space collector with py-spy
-
-The first language-level collector is `collector_type=py-spy`. It attaches to a
-Python process with `py-spy record --format raw`, writes
-`artifacts/<task_id>/raw/pyspy.raw.txt`, and Analyzer converts the Python stack
-samples into `flamegraph.svg` plus `topn.json`. The Web detail page adds a
-`Python 栈` tab for this collector.
-
-Install `py-spy` in the same environment as the Agent:
+安装：
 
 ```bash
 python -m pip install py-spy
 ```
 
-Run the preflight against a Python target process:
+检查：
 
 ```bash
 python scripts/demo/check_pyspy_env.py --pid <target-pid>
 ```
 
-Then create a task with `collector_type=py-spy`. On Linux you may still need
-ptrace permissions, for example running the Agent with enough privileges or
-adjusting `kernel.yama.ptrace_scope` for the demo session.
+启动并 smoke：
 
-### Continuous profiling windows
+```bash
+COLLECTOR_TYPE=py-spy bash ./scripts/demo/start-local.sh
+make smoke-real COLLECTOR_TYPE=py-spy
+```
 
-The `计划任务` page now creates a minimal continuous profiling profile. Each
-profile can use the default fixed 5-minute interval (`300s`) or a five-field
-cron expression such as `*/5 * * * *`, plus an optional stagger offset to avoid
-multiple profiles starting at the same second. Every due window materializes as
-a normal task, so the existing Agent, Analyzer, flamegraph, TopN, and attribution
-views are reused.
+该采集器面向 Python 进程，输出 Python 用户态调用栈，并在 Web 中展示独立的 Python 栈视图。
 
-The window list endpoint also returns a small aggregate summary for the latest
-24 windows: total, done, failed, active, pending, latest status, latest range,
-and done ratio. The Web page renders that summary above the window table so a
-reviewer can verify continuous profiling health without opening every task.
-The same endpoint accepts `status`, `from`, `to`, and `limit` query parameters
-for scoped timeline review, and the Web page exposes those filters with a
-clickable window strip for drilling into the materialized task.
-`GET /api/v1/continuous-profiles/:id/trends` aggregates recent completed window
-TopN files into a compact hotspot trend view, so the plan page can show whether
-the same function is rising, falling, staying stable, or sitting in a high-risk
-band across windows.
-The trend payload now also includes a deterministic label and reason so the Web
-page can flag sustained high-peak hotspots without a separate heuristic layer.
-Each trend series is also compared with the seeded attribution baselines when a
-collector/function match exists; the API returns the expected percent, actual
-peak, delta, and status so the Web page can show baseline drift directly in the
-continuous profiling table.
-Continuous profiles can also be paused and resumed from the plan page; the API
-persists an audit log for each lifecycle change while keeping existing windows
-available for review.
+### 真实采集器 preflight
 
-For a Windows-safe demo, choose `collector_type=mock-perf`, enter the printed
-mock target PID, and keep the default `5 分钟` interval. Advanced demos can switch
-the plan form to `Cron`, use a value like `*/5 * * * *`, and set a 15-120 second
-stagger. The first interval window is created immediately so the demo does not
-need to wait five minutes; later windows are scheduled by the API background
-scanner and only become claimable when their window start time has arrived.
-When the target agent is left blank, the API assigns the task or continuous
-profile to the online Agent with the fewest active tasks, which keeps the demo
-usable when multiple Agents are running.
+统一检查 `perf`、`ebpf-syscall`、`py-spy`：
 
-### Attribution mini-loop
+```bash
+make real-preflight
+make real-check
+make real-smoke-report
+```
 
-`GET /api/v1/tasks/:id/results` also returns an `attribution` object when
-`topn.json` is readable. The API first builds a deterministic, tool-driven
-evidence packet over TopN hotspots, rule matches, sampling parameters, seeded
-baseline rows, and the resource timeline. If `MINIDROP_AI_API_KEY` is
-configured, the API then calls an OpenAI-compatible chat completions endpoint
-and asks the model to produce a concise JSON conclusion, confidence, and
-recommendations using only that evidence.
+在 Windows 上，这些脚本会尽量进入 WSL2 检查；如果依赖或权限不满足，会生成 `BLOCKED` 报告，而不是让脚本直接崩溃。报告路径：
 
-If the model is not configured, times out, or returns invalid JSON, Mini-Drop
-keeps the deterministic rule attribution and records `analysis_engine=rule`
-plus `fallback_reason` when applicable. The Web detail page shows whether a
-result came from real AI or the rule fallback. The built-in tools are
-`get_top_hotspots(task_id)`, `match_hotspot_rules(topn)`,
-`compare_with_baseline(task_id)`, `get_resource_timeline(task_id)`, and
-`call_ai_model(model)`.
+- `artifacts/real-collector-preflight.md`
+- `artifacts/real-smoke-report.md`
 
-To enable real AI attribution:
+## AI 归因配置
+
+Web 控制台中有“智能分析”页面，可配置 OpenAI-compatible LLM：
+
+- Base URL，例如 `https://api.openai.com/v1`
+- API Key
+- Model，例如 `gpt-4o-mini`
+- Timeout
+- 是否启用真实 AI 归因
+
+也可以通过环境变量配置：
 
 ```powershell
 $env:MINIDROP_AI_ENABLED = "true"
@@ -568,43 +266,70 @@ $env:MINIDROP_AI_BASE_URL = "https://api.openai.com/v1"
 .\scripts\demo\start-compose.ps1 -ApiPort 18080 -WebPort 14173 -MinioPort 19000 -MinioConsolePort 19001
 ```
 
-Any OpenAI-compatible provider can be used by changing `MINIDROP_AI_BASE_URL`
-and `MINIDROP_AI_MODEL`.
+如果没有配置 LLM，或者远程模型超时、返回非法 JSON，系统会自动回退到规则归因，并在结果中标记 `analysis_engine=rule` 和 fallback reason。
 
-The task comparison page also aggregates TopN hotspots across completed tasks,
-showing recurring functions, coverage, average percent, peak percent, total
-samples, and the latest task link. This gives reviewers a quick cross-task view
-before opening individual flamegraphs.
-For continuous profiling runs, the same page also groups hotspots across
-continuous profile IDs so recurring functions can be separated from a
-single-plan anomaly.
+## 常用验证命令
 
-For review evidence, run `make attribution-evaluation` or
-`python scripts/demo/write_attribution_evaluation.py`. The report writes
-`artifacts/attribution-evaluation-report.md` with six attribution scenarios and
-a weighted 60-point rubric covering conclusion, evidence, timeline, tool trace,
-recommendation, and confidence.
-
-Analyzer writes `perf.script.txt` and `collapsed.txt` for every `perf.data`
-analysis. It uses the built-in stack parser and SVG renderer by default. To use
-Brendan Gregg's standard FlameGraph tools, set:
+### 单测与覆盖率
 
 ```bash
-export MINIDROP_STACKCOLLAPSE_PERF=/path/to/stackcollapse-perf.pl
-export MINIDROP_FLAMEGRAPH_PL=/path/to/flamegraph.pl
+make test
+make coverage
 ```
 
-If `stackcollapse-perf.pl` produces no stacks, the analyzer falls back to the
-built-in parser. If `flamegraph.pl` is missing or fails, it falls back to the
-built-in SVG renderer.
+覆盖率报告会写入：
 
-Expected failure reasons are explicit: missing `perf` returns
-`perf command not found; install linux-tools or linux-perf`, and restrictive
-kernel settings return a `perf_event_paranoid=...` message.
+```text
+artifacts/coverage-report.md
+```
 
-## API Surface
+### Compose smoke
 
-Public endpoints:
+```bash
+make compose-health
+make smoke-demo
+make smoke-demo-minio
+make smoke-demo-fail
+make smoke-demo-offline
+```
+
+如果使用备用 API 端口：
+
+```powershell
+$env:MINIDROP_API_PORT = "18080"
+$env:MINIDROP_API_BASE_URL = "http://127.0.0.1:18080"
+python scripts\demo\smoke_compose.py --pid 1 --agent-id drop_agent --expect-minio-url
+python scripts\demo\smoke_compose.py --pid 999999 --agent-id drop_agent --expect-status FAILED --expect-reason-contains "target pid not found"
+```
+
+### 最终演示验收
+
+```bash
+make acceptance-snapshot
+make recording-checklist
+make submission-notes
+make capture-submission-artifacts
+make attribution-evaluation
+make final-preflight
+```
+
+对应产物：
+
+- `artifacts/demo-evidence.md`
+- `artifacts/recording-checklist.md`
+- `artifacts/submission-notes.md`
+- `artifacts/submission-screenshots/`
+- `artifacts/attribution-evaluation-report.md`
+- `artifacts/final-preflight.md`
+
+## API 概览
+
+认证：
+
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/me`
+
+核心接口：
 
 - `GET /healthz`
 - `GET /api/v1/agents`
@@ -613,34 +338,43 @@ Public endpoints:
 - `GET /api/v1/tasks`
 - `GET /api/v1/tasks/:id`
 - `GET /api/v1/tasks/:id/results`
+- `GET /api/v1/audit-logs`
+
+Continuous Profiling：
+
 - `GET /api/v1/continuous-profiles`
 - `POST /api/v1/continuous-profiles`
 - `GET /api/v1/continuous-profiles/:id`
 - `GET /api/v1/continuous-profiles/:id/windows`
-- `GET /api/v1/audit-logs`
+- `GET /api/v1/continuous-profiles/:id/trends`
 
-Internal mock-agent endpoints:
+AI 配置：
+
+- `GET /api/v1/ai-config`
+- `POST /api/v1/ai-config`
+
+Agent 内部接口：
 
 - `GET /api/v1/internal/tasks/claim`
 - `POST /api/v1/internal/tasks/:id/uploading`
 - `POST /api/v1/internal/tasks/:id/complete`
 - `POST /api/v1/internal/tasks/:id/fail`
 
-## Data and Artifacts
+## 数据与存储
 
-- SQLite database: `data/mini-drop.db`
-- Raw artifacts: `artifacts/<task_id>/raw/`
-- Analysis artifacts: `artifacts/<task_id>/analysis/`
+本地开发默认：
 
-Docker Compose uses PostgreSQL for the API database and MinIO for browser-facing
-artifact downloads. The shared artifact volume remains the Agent/API handoff
-path; API uploads files from that volume to MinIO before it signs URLs.
+- SQLite 数据库：`data/mini-drop.db`
+- 原始产物：`artifacts/<task_id>/raw/`
+- 分析产物：`artifacts/<task_id>/analysis/`
 
-- Postgres database: `mini_drop_postgres`
-- MinIO objects: `mini_drop_minio`
-- Agent/API handoff artifacts: `mini_drop_artifacts`
+Docker Compose 默认：
 
-Relevant storage environment variables:
+- PostgreSQL 数据卷：`mini_drop_postgres`
+- MinIO 数据卷：`mini_drop_minio`
+- Agent/API 共享产物卷：`mini_drop_artifacts`
+
+常用存储环境变量：
 
 - `MINIDROP_STORAGE_BACKEND=local|minio`
 - `MINIDROP_MINIO_ENDPOINT=minio:9000`
@@ -649,65 +383,46 @@ Relevant storage environment variables:
 - `MINIDROP_MINIO_REGION=us-east-1`
 - `MINIDROP_MINIO_PRESIGN_TTL_SEC=900`
 
-## Next Steps
+## 当前验收状态
 
-The repository still follows the documented roadmap:
+已在当前 Windows 开发环境验证：
 
-1. Run the real collector smoke helpers in WSL2 / Ubuntu to validate kernel permissions.
-2. Validate the optional standard FlameGraph scripts in the WSL2 / Linux demo path.
-3. Replace the deterministic attribution loop with a remote LLM call and wire `get_resource_timeline` to real metrics.
-4. Harden the lightweight cron parser with production-grade cron-library semantics if the demo needs more cron dialects.
+- PowerShell 本地 mock demo 启停。
+- Docker Compose PostgreSQL + MinIO + API + Agent + Web 启动。
+- Compose 正常路径：创建任务并进入 `DONE`。
+- Compose 异常路径：不存在 PID 进入 `FAILED`，reason 清晰。
+- MinIO signed URL 结果下载。
+- Agent 离线 smoke。
+- Web production build。
+- Go API/Agent 单测。
+- Python Analyzer 单测。
+- 覆盖率报告生成。
+- AI 归因评估报告生成。
+- 最终 preflight 和提交材料生成脚本。
 
-## Acceptance Status
+仍需要在 WSL2 / Linux 主机上完成真实采集器成功验收：
 
-Verified in the current Windows workspace:
-
-- PowerShell local mock demo startup and cleanup with `scripts/demo/start-local.ps1` / `stop-local.ps1`.
-- Local mock E2E smoke task with `mock-perf`.
-- Docker Compose PostgreSQL API database startup.
-- Docker Compose mock demo normal path.
-- Docker Compose MinIO signed artifact URL path.
-- Docker Compose PID failure path.
-- Docker Compose acceptance snapshot with two completed TopN-backed tasks.
-- Markdown demo evidence generation with `make demo-evidence` or
-  `python scripts/demo/write_demo_evidence.py`.
-- Recording and submission notes generation with `make recording-checklist` and
-  `make submission-notes`.
-- WSL2 real collector readiness report generation with `make real-preflight`.
-- Coverage gate report generation with `make coverage`.
-- Attribution evaluation report generation with `make attribution-evaluation`.
-- Optional WSL2 real-collector preflight evidence in
-  `artifacts/demo-evidence.md`.
-- Go API/Agent unit tests.
-- Python Analyzer unit tests.
-- Web production build.
-- Linux shell script syntax.
-
-Requires WSL2 / Linux host validation:
-
-- `make real-smoke-report`
 - `make smoke-real COLLECTOR_TYPE=perf`
 - `make smoke-real COLLECTOR_TYPE=ebpf-syscall`
 - `make smoke-real COLLECTOR_TYPE=py-spy`
 
-Current WSL2 preflight on this machine detects a Linux runtime, but still needs
-collector prerequisites before the real smoke can pass:
+当前机器的真实采集器 preflight 可能会因为依赖或权限进入 `BLOCKED`，典型原因包括：
 
-- `perf` is not installed and `kernel.perf_event_paranoid=2` blocks process profiling.
-- `bpftrace` is not installed and tracefs is not readable for the current user.
-- `py-spy` is not installed.
+- `perf` 未安装或 `kernel.perf_event_paranoid` 过高。
+- `bpftrace` 未安装或 tracefs/debugfs 不可读。
+- `py-spy` 未安装或 ptrace 权限不足。
 
-## Documentation
+## 文档导航
 
-- [Original Mini-Drop assignment](docs/references/Mini-Drop-题目.md)
-- [Original Drop reverse-engineering guide](docs/references/drop系统复刻指南.md)
-- [Project brief](docs/design/00-project-brief.md)
-- [MVP scope](docs/design/01-mvp-scope.md)
-- [Architecture](docs/design/02-architecture.md)
-- [State machines and observability](docs/design/03-state-machines-and-observability.md)
-- [Development plan](docs/design/04-development-plan.md)
+- [项目题目](docs/references/Mini-Drop-题目.md)
+- [Drop 复刻参考](docs/references/drop系统复刻指南.md)
+- [项目简报](docs/design/00-project-brief.md)
+- [MVP 范围](docs/design/01-mvp-scope.md)
+- [系统架构](docs/design/02-architecture.md)
+- [状态机与可观测性](docs/design/03-state-machines-and-observability.md)
+- [开发计划](docs/design/04-development-plan.md)
 - [Backlog](docs/design/05-backlog.md)
-- [Next implementation](docs/design/06-next-implementation.md)
-- [Attribution evaluation](docs/design/07-attribution-evaluation.md)
-- [Demo runbook](docs/demo-runbook.md)
-- [Final demo script](docs/demo-script.md)
+- [下一步实现](docs/design/06-next-implementation.md)
+- [归因评估](docs/design/07-attribution-evaluation.md)
+- [演示 Runbook](docs/demo-runbook.md)
+- [最终演示脚本](docs/demo-script.md)
