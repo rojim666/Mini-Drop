@@ -15,6 +15,89 @@ import (
 	"mini-drop/internal/minidrop"
 )
 
+func TestAuthProtectsConsoleRoutes(t *testing.T) {
+	svc := newTestServiceWithConfig(t, Config{
+		AuthEnabled:     true,
+		AuthUsername:    "demo",
+		AuthPassword:    "minidrop",
+		AuthTokenSecret: "test-secret",
+		AuthSessionTTL:  time.Hour,
+	})
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodGet, "/api/v1/agents", nil, http.StatusUnauthorized)
+
+	performJSON(t, router, http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"username": "demo",
+		"password": "wrong",
+	}, http.StatusUnauthorized)
+
+	loginResp := performJSON(t, router, http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"username": "demo",
+		"password": "minidrop",
+		"tenant":   "local-demo",
+		"region":   "compose",
+	}, http.StatusOK)
+	token := loginResp["token"].(string)
+	if token == "" {
+		t.Fatal("expected login token")
+	}
+
+	authorized := performJSONWithHeaders(t, router, http.MethodGet, "/api/v1/auth/me", nil, http.StatusOK, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+	user := authorized["user"].(map[string]any)
+	if got := user["username"].(string); got != "demo" {
+		t.Fatalf("expected demo user, got %s", got)
+	}
+	if got := user["region"].(string); got != "compose" {
+		t.Fatalf("expected compose region, got %s", got)
+	}
+}
+
+func TestAIConfigCanBeReadAndUpdatedWithoutLeakingSecret(t *testing.T) {
+	svc := newTestServiceWithConfig(t, Config{
+		AIEnabled:   false,
+		AIBaseURL:   "https://api.openai.com/v1",
+		AIAPIKey:    "env-secret-value",
+		AIModel:     "gpt-4o-mini",
+		AITimeout:   20 * time.Second,
+		AIMaxTokens: 800,
+	})
+	router := svc.Router()
+
+	initial := performJSON(t, router, http.MethodGet, "/api/v1/ai-config", nil, http.StatusOK)
+	if got := initial["api_key_display"].(string); strings.Contains(got, "env-secret-value") {
+		t.Fatalf("expected masked secret, got %q", got)
+	}
+
+	updated := performJSON(t, router, http.MethodPost, "/api/v1/ai-config", map[string]any{
+		"enabled":     true,
+		"base_url":    "https://example.test/v1",
+		"api_key":     "sk-test-123456",
+		"model":       "demo-model",
+		"timeout_sec": 12,
+		"max_tokens":  512,
+	}, http.StatusOK)
+	if got := updated["enabled"].(bool); !got {
+		t.Fatal("expected AI config enabled")
+	}
+	if got := updated["model"].(string); got != "demo-model" {
+		t.Fatalf("expected updated model, got %q", got)
+	}
+	if got := updated["api_key_display"].(string); got == "sk-test-123456" {
+		t.Fatal("expected API key to be masked")
+	}
+
+	state := svc.currentAIState()
+	if !state.Enabled || state.APIKey != "sk-test-123456" || state.Model != "demo-model" {
+		t.Fatalf("expected runtime AI state to update, got %+v", state)
+	}
+	if svc.ai == nil || svc.ai.model != "demo-model" {
+		t.Fatal("expected AI client to be rebuilt from saved config")
+	}
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 	ctx := context.Background()
@@ -25,9 +108,46 @@ func newTestService(t *testing.T) *Service {
 		DBPath:               filepath.Join(dir, "data", "mini-drop.db"),
 		ArtifactDir:          filepath.Join(dir, "artifacts"),
 		AllowedOrigin:        "http://127.0.0.1:5173",
+		AuthEnabled:          false,
 		OfflineAfter:         30 * time.Second,
 		OfflineCheckInterval: time.Hour,
 	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	return svc
+}
+
+func newTestServiceWithConfig(t *testing.T, cfg Config) *Service {
+	t.Helper()
+	ctx := context.Background()
+	dir := t.TempDir()
+	if cfg.Addr == "" {
+		cfg.Addr = "127.0.0.1:0"
+	}
+	if cfg.DataDir == "" {
+		cfg.DataDir = filepath.Join(dir, "data")
+	}
+	if cfg.DBPath == "" {
+		cfg.DBPath = filepath.Join(dir, "data", "mini-drop.db")
+	}
+	if cfg.ArtifactDir == "" {
+		cfg.ArtifactDir = filepath.Join(dir, "artifacts")
+	}
+	if cfg.AllowedOrigin == "" {
+		cfg.AllowedOrigin = "http://127.0.0.1:5173"
+	}
+	if !cfg.AuthEnabled && cfg.AuthUsername == "" && cfg.AuthPassword == "" && cfg.AuthTokenSecret == "" {
+		cfg.AuthEnabled = false
+	}
+	if cfg.OfflineAfter == 0 {
+		cfg.OfflineAfter = 30 * time.Second
+	}
+	if cfg.OfflineCheckInterval == 0 {
+		cfg.OfflineCheckInterval = time.Hour
+	}
+	svc, err := New(ctx, cfg)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -84,6 +204,91 @@ func TestTaskLifecycleHappyPath(t *testing.T) {
 	events := task["events"].([]any)
 	if len(events) != 4 {
 		t.Fatalf("expected 4 status events, got %d", len(events))
+	}
+}
+
+func TestAgentAllowlistRejectsUnexpectedHeartbeat(t *testing.T) {
+	svc := newTestServiceWithConfig(t, Config{AgentAllowlist: []string{"drop_agent"}})
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "agt_local",
+		"hostname": "windows-agent",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusForbidden)
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "drop_agent",
+		"hostname": "drop-agent",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusOK)
+
+	resp := performJSON(t, router, http.MethodGet, "/api/v1/agents", nil, http.StatusOK)
+	agents := resp["agents"].([]any)
+	if len(agents) != 1 {
+		t.Fatalf("expected one allowed agent, got %d", len(agents))
+	}
+	if got := agents[0].(map[string]any)["id"].(string); got != "drop_agent" {
+		t.Fatalf("expected drop_agent, got %s", got)
+	}
+}
+
+func TestCreateTaskAutoSelectsLeastBusyAgent(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+	now := time.Now().UTC()
+
+	agents := []minidrop.Agent{
+		{
+			ID:              "agt_busy",
+			Hostname:        "busy-host",
+			IP:              "127.0.0.1",
+			Version:         "0.1.0",
+			Status:          minidrop.AgentStatusOnline,
+			LastHeartbeatAt: now.Add(2 * time.Minute),
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+		{
+			ID:              "agt_idle",
+			Hostname:        "idle-host",
+			IP:              "127.0.0.2",
+			Version:         "0.1.0",
+			Status:          minidrop.AgentStatusOnline,
+			LastHeartbeatAt: now,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}
+	if err := svc.db.Create(&agents).Error; err != nil {
+		t.Fatalf("create agents: %v", err)
+	}
+	if err := svc.db.Create(&minidrop.Task{
+		ID:                "tsk_busy_running",
+		TargetPID:         4321,
+		TargetAgentID:     "agt_busy",
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "mock-perf",
+		Status:            minidrop.TaskStatusRunning,
+		StatusReason:      "busy",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}).Error; err != nil {
+		t.Fatalf("create busy task: %v", err)
+	}
+
+	resp := performJSON(t, router, http.MethodPost, "/api/v1/tasks", map[string]any{
+		"target_pid":          1234,
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+	}, http.StatusCreated)
+	task := resp["task"].(map[string]any)
+	if got := task["target_agent_id"].(string); got != "agt_idle" {
+		t.Fatalf("expected least busy agent, got %s", got)
 	}
 }
 
@@ -271,12 +476,27 @@ func TestTaskResultsIncludeRuleAttribution(t *testing.T) {
 	if err := os.WriteFile(topNAbsPath, data, 0o644); err != nil {
 		t.Fatalf("write topn: %v", err)
 	}
+	timelineRelPath := writeTestResourceTimeline(t, svc, taskID, resourceTimelinePayload{
+		Source:      "perf_script_samples",
+		Signal:      "cpu_cycles",
+		Alignment:   "cpu",
+		Summary:     "perf script samples align with the CPU hotspot window",
+		WindowSec:   15,
+		TopFunction: "main.expensiveLoop",
+		PeakPercent: 88.0,
+		Points: []resourceTimelinePointPayload{
+			{OffsetSec: 0, Value: 35.0, Samples: 8},
+			{OffsetSec: 5, Value: 88.0, Samples: 21},
+			{OffsetSec: 10, Value: 42.0, Samples: 10},
+		},
+	})
 
 	performJSON(t, router, http.MethodPost, "/api/v1/internal/tasks/"+taskID+"/complete", map[string]any{
-		"raw_artifact_path": taskID + "/raw/mock.perf.data.json",
-		"flamegraph_path":   filepath.ToSlash(filepath.Join(taskID, "analysis", "flamegraph.svg")),
-		"topn_path":         topNRelPath,
-		"summary":           "Synthetic CPU profile ready",
+		"raw_artifact_path":      taskID + "/raw/mock.perf.data.json",
+		"flamegraph_path":        filepath.ToSlash(filepath.Join(taskID, "analysis", "flamegraph.svg")),
+		"topn_path":              topNRelPath,
+		"resource_timeline_path": timelineRelPath,
+		"summary":                "Synthetic CPU profile ready",
 	}, http.StatusOK)
 
 	resp := performJSON(t, router, http.MethodGet, "/api/v1/tasks/"+taskID+"/results", nil, http.StatusOK)
@@ -289,15 +509,55 @@ func TestTaskResultsIncludeRuleAttribution(t *testing.T) {
 	if got := source["task_id"].(string); got != taskID {
 		t.Fatalf("expected source task_id %s, got %s", taskID, got)
 	}
+	if got := source["resource_timeline_path"].(string); got != timelineRelPath {
+		t.Fatalf("expected source resource timeline path %s, got %s", timelineRelPath, got)
+	}
+	resourceTimeline := attribution["resource_timeline"].(map[string]any)
+	if got := resourceTimeline["source"].(string); got != "perf_script_samples" {
+		t.Fatalf("expected analyzer resource timeline source, got %s", got)
+	}
+	if got := resourceTimeline["top_function"].(string); got != "main.expensiveLoop" {
+		t.Fatalf("expected timeline top function, got %s", got)
+	}
+	if points := resourceTimeline["points"].([]any); len(points) != 3 {
+		t.Fatalf("expected three resource timeline points, got %+v", points)
+	}
 	evidence := attribution["evidence"].([]any)
 	if len(evidence) < 3 {
 		t.Fatalf("expected attribution evidence, got %d items", len(evidence))
 	}
+	foundTimeline := false
+	for _, item := range evidence {
+		row := item.(map[string]any)
+		if row["kind"] == "resource_timeline" {
+			foundTimeline = true
+			if !strings.Contains(row["detail"].(string), "perf script samples") {
+				t.Fatalf("expected resource timeline detail to mention analyzer timeline, got %+v", row)
+			}
+			nested := row["resource_timeline"].(map[string]any)
+			if nested["source"] != "perf_script_samples" {
+				t.Fatalf("expected nested resource timeline evidence, got %+v", nested)
+			}
+		}
+	}
+	if !foundTimeline {
+		t.Fatalf("expected resource timeline evidence, got %+v", evidence)
+	}
 	trace := attribution["tool_trace"].([]any)
-	if len(trace) < 3 {
+	if len(trace) < 4 {
 		t.Fatalf("expected attribution tool trace, got %d items", len(trace))
 	}
-	if prompt := attribution["prompt"].(string); !strings.Contains(prompt, taskID) {
+	foundTimelineTool := false
+	for _, item := range trace {
+		row := item.(map[string]any)
+		if row["name"] == "get_resource_timeline" {
+			foundTimelineTool = true
+		}
+	}
+	if !foundTimelineTool {
+		t.Fatalf("expected get_resource_timeline tool trace, got %+v", trace)
+	}
+	if prompt := attribution["prompt"].(string); !strings.Contains(prompt, taskID) || !strings.Contains(prompt, "timeline=") {
 		t.Fatalf("expected prompt to reference task id, got %q", prompt)
 	}
 
@@ -305,12 +565,19 @@ func TestTaskResultsIncludeRuleAttribution(t *testing.T) {
 	if err := svc.DB().First(&persisted, "task_id = ?", taskID).Error; err != nil {
 		t.Fatalf("expected persisted attribution result: %v", err)
 	}
+	if !strings.Contains(persisted.ResourceTimelineJSON, "perf_script_samples") {
+		t.Fatalf("expected persisted resource timeline JSON, got %s", persisted.ResourceTimelineJSON)
+	}
 
 	secondResp := performJSON(t, router, http.MethodGet, "/api/v1/tasks/"+taskID+"/results", nil, http.StatusOK)
 	secondResult := secondResp["result"].(map[string]any)
 	secondAttribution := secondResult["attribution"].(map[string]any)
 	if _, ok := secondAttribution["persisted_at"].(string); !ok {
 		t.Fatalf("expected second attribution response to include persisted_at: %+v", secondAttribution)
+	}
+	secondTimeline := secondAttribution["resource_timeline"].(map[string]any)
+	if got := secondTimeline["source"].(string); got != "perf_script_samples" {
+		t.Fatalf("expected persisted resource timeline source, got %s", got)
 	}
 }
 
@@ -405,8 +672,60 @@ func TestBuildAttributionIncludesBaselineEvidence(t *testing.T) {
 	if !foundBaseline {
 		t.Fatalf("expected baseline evidence, got %+v", got.Evidence)
 	}
-	if !strings.Contains(got.Prompt, "baseline=storage baseline") {
+	foundTimeline := false
+	for _, item := range got.Evidence {
+		if item.Kind == "resource_timeline" && strings.Contains(item.Detail, "IO/storage") {
+			foundTimeline = true
+		}
+	}
+	if !foundTimeline {
+		t.Fatalf("expected IO resource timeline evidence, got %+v", got.Evidence)
+	}
+	if !strings.Contains(got.Prompt, "baseline=storage baseline") || !strings.Contains(got.Prompt, "timeline=io_pressure") {
 		t.Fatalf("expected prompt to include baseline summary, got %q", got.Prompt)
+	}
+}
+
+func TestLoadAttributionRebuildsLegacyRecordWithResourceTimeline(t *testing.T) {
+	svc := newTestService(t)
+	now := time.Now().UTC()
+	task := minidrop.Task{
+		ID:                "tsk_legacy_attribution",
+		TargetPID:         4321,
+		TargetAgentID:     "agt_legacy",
+		SampleDurationSec: 10,
+		SampleRateHz:      99,
+		CollectorType:     minidrop.CollectorMockPerf,
+		Status:            minidrop.TaskStatusDone,
+		StatusReason:      "done",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+	hotspots := []hotspotPayload{{Function: "main.spinCPU", Samples: 20, Percent: 66.0}}
+	legacyPayload := buildAttribution(task, "tsk_legacy_attribution/analysis/topn.json", hotspots)
+	legacyRecord, err := attributionRecordFromPayload(task.ID, legacyPayload, now)
+	if err != nil {
+		t.Fatalf("build legacy attribution: %v", err)
+	}
+	legacyRecord.ResourceTimelineJSON = ""
+	if err := svc.db.Create(&legacyRecord).Error; err != nil {
+		t.Fatalf("create legacy attribution: %v", err)
+	}
+
+	got := svc.loadOrBuildAttribution(task, "tsk_legacy_attribution/analysis/topn.json", "", hotspots)
+	if got == nil || got.ResourceTimeline == nil {
+		t.Fatalf("expected rebuilt resource timeline, got %+v", got)
+	}
+	if got.ResourceTimeline.Source != "derived_from_profile" {
+		t.Fatalf("expected derived timeline source, got %+v", got.ResourceTimeline)
+	}
+
+	var persisted minidrop.AttributionResult
+	if err := svc.db.First(&persisted, "task_id = ?", task.ID).Error; err != nil {
+		t.Fatalf("load rebuilt attribution: %v", err)
+	}
+	if !strings.Contains(persisted.ResourceTimelineJSON, "derived_from_profile") {
+		t.Fatalf("expected rebuilt timeline to persist, got %s", persisted.ResourceTimelineJSON)
 	}
 }
 
@@ -460,6 +779,125 @@ func TestCreateContinuousProfileCreatesInitialWindow(t *testing.T) {
 	window := windows[0].(map[string]any)
 	if got := window["status"].(string); got != string(minidrop.TaskStatusPending) {
 		t.Fatalf("expected pending window, got %s", got)
+	}
+	summary := windowsResp["summary"].(map[string]any)
+	if got := summary["total_windows"].(float64); got != 1 {
+		t.Fatalf("expected 1 total window, got %v", got)
+	}
+	if got := summary["pending_windows"].(float64); got != 1 {
+		t.Fatalf("expected 1 pending window, got %v", got)
+	}
+	if got := summary["latest_status"].(string); got != string(minidrop.TaskStatusPending) {
+		t.Fatalf("expected latest pending status, got %s", got)
+	}
+}
+
+func TestCreateContinuousProfileStoresCronScheduleFields(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "agt_schedule_cron",
+		"hostname": "demo-host",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusOK)
+
+	resp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles", map[string]any{
+		"name":                "cron profile",
+		"target_pid":          4321,
+		"target_agent_id":     "agt_schedule_cron",
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+		"schedule_mode":       "cron",
+		"cron_expression":     "*/5 * * * *",
+		"stagger_sec":         30,
+	}, http.StatusCreated)
+	profile := resp["profile"].(map[string]any)
+	if got := profile["schedule_mode"].(string); got != minidrop.ContinuousScheduleCron {
+		t.Fatalf("expected cron schedule mode, got %s", got)
+	}
+	if got := profile["cron_expression"].(string); got != "*/5 * * * *" {
+		t.Fatalf("expected cron expression to persist, got %s", got)
+	}
+	if got := profile["stagger_sec"].(float64); got != 30 {
+		t.Fatalf("expected stagger 30, got %v", got)
+	}
+}
+
+func TestCreateContinuousProfileAutoSelectsLeastBusyAgent(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+	now := time.Now().UTC()
+
+	agents := []minidrop.Agent{
+		{
+			ID:              "agt_schedule_busy",
+			Hostname:        "busy-host",
+			IP:              "127.0.0.1",
+			Version:         "0.1.0",
+			Status:          minidrop.AgentStatusOnline,
+			LastHeartbeatAt: now.Add(2 * time.Minute),
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+		{
+			ID:              "agt_schedule_idle",
+			Hostname:        "idle-host",
+			IP:              "127.0.0.2",
+			Version:         "0.1.0",
+			Status:          minidrop.AgentStatusOnline,
+			LastHeartbeatAt: now,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}
+	if err := svc.db.Create(&agents).Error; err != nil {
+		t.Fatalf("create agents: %v", err)
+	}
+	if err := svc.db.Create(&minidrop.Task{
+		ID:                "tsk_schedule_busy_running",
+		TargetPID:         4321,
+		TargetAgentID:     "agt_schedule_busy",
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "mock-perf",
+		Status:            minidrop.TaskStatusRunning,
+		StatusReason:      "busy",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}).Error; err != nil {
+		t.Fatalf("create busy task: %v", err)
+	}
+
+	resp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles", map[string]any{
+		"name":                "auto scheduled window",
+		"target_pid":          4321,
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+		"interval_sec":        300,
+	}, http.StatusCreated)
+	profile := resp["profile"].(map[string]any)
+	if got := profile["target_agent_id"].(string); got != "agt_schedule_idle" {
+		t.Fatalf("expected least busy profile agent, got %s", got)
+	}
+
+	tasksResp := performJSON(t, router, http.MethodGet, "/api/v1/tasks", nil, http.StatusOK)
+	tasks := tasksResp["tasks"].([]any)
+	foundInitialWindowTask := false
+	for _, item := range tasks {
+		task := item.(map[string]any)
+		if taskProfileID, ok := task["continuous_profile_id"].(string); ok && taskProfileID == profile["id"].(string) {
+			foundInitialWindowTask = true
+			if got := task["target_agent_id"].(string); got != "agt_schedule_idle" {
+				t.Fatalf("expected least busy window task agent, got %s", got)
+			}
+		}
+	}
+	if !foundInitialWindowTask {
+		t.Fatal("expected initial continuous window task")
 	}
 }
 
@@ -518,9 +956,506 @@ func TestContinuousWindowTaskStatusSyncsToWindow(t *testing.T) {
 	if got := windows[0].(map[string]any)["status"].(string); got != string(minidrop.TaskStatusDone) {
 		t.Fatalf("expected done window, got %s", got)
 	}
+	summary := windowsResp["summary"].(map[string]any)
+	if got := summary["done_windows"].(float64); got != 1 {
+		t.Fatalf("expected 1 done window, got %v", got)
+	}
+	if got := summary["latest_status"].(string); got != string(minidrop.TaskStatusDone) {
+		t.Fatalf("expected latest done status, got %s", got)
+	}
+	if got := summary["done_ratio"].(float64); got != 1 {
+		t.Fatalf("expected done ratio 1, got %v", got)
+	}
+}
+
+func TestClaimTaskSkipsFutureContinuousWindow(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+	now := time.Now().UTC()
+
+	if err := svc.db.Create(&minidrop.Agent{
+		ID:              "agt_future",
+		Hostname:        "future-host",
+		IP:              "127.0.0.1",
+		Version:         "0.1.0",
+		Status:          minidrop.AgentStatusOnline,
+		LastHeartbeatAt: now,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}).Error; err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+
+	profile := minidrop.ContinuousProfile{
+		ID:                "cprof_future",
+		Name:              "future schedule",
+		TargetPID:         4321,
+		TargetAgentID:     "agt_future",
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "mock-perf",
+		WindowDurationSec: minidrop.ContinuousWindowDurationSec,
+		IntervalSec:       300,
+		ScheduleMode:      minidrop.ContinuousScheduleInterval,
+		StaggerSec:        0,
+		Enabled:           true,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+	if err := svc.db.Create(&profile).Error; err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+	windowStart := now.Add(5 * time.Minute)
+	window := minidrop.ContinuousProfileWindow{
+		ID:            "cwin_future",
+		ProfileID:     profile.ID,
+		TaskID:        "tsk_future",
+		WindowStartAt: windowStart,
+		WindowEndAt:   windowStart.Add(5 * time.Minute),
+		Status:        minidrop.TaskStatusPending,
+		StatusReason:  "future window",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if err := svc.db.Create(&window).Error; err != nil {
+		t.Fatalf("create window: %v", err)
+	}
+	if err := svc.db.Create(&minidrop.Task{
+		ID:                  window.TaskID,
+		TargetPID:           4321,
+		TargetAgentID:       profile.TargetAgentID,
+		SampleDurationSec:   15,
+		SampleRateHz:        99,
+		CollectorType:       "mock-perf",
+		ContinuousProfileID: profile.ID,
+		ContinuousWindowID:  window.ID,
+		Status:              minidrop.TaskStatusPending,
+		StatusReason:        "future window",
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}).Error; err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	claimResp := performJSON(t, router, http.MethodGet, "/api/v1/internal/tasks/claim?agent_id=agt_future", nil, http.StatusNoContent)
+	if len(claimResp) != 0 {
+		t.Fatalf("expected no claim payload for future continuous window, got %+v", claimResp)
+	}
+}
+
+func TestContinuousProfileEnableDisableWritesAudit(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "agt_schedule_toggle",
+		"hostname": "demo-host",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusOK)
+
+	createResp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles", map[string]any{
+		"name":                "toggle profile",
+		"target_pid":          4321,
+		"target_agent_id":     "agt_schedule_toggle",
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+		"interval_sec":        300,
+	}, http.StatusCreated)
+	profileID := createResp["profile"].(map[string]any)["id"].(string)
+
+	disableResp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles/"+profileID+"/disable", nil, http.StatusOK)
+	if got := disableResp["profile"].(map[string]any)["enabled"].(bool); got {
+		t.Fatal("expected disabled profile")
+	}
+
+	var disabledAudit minidrop.AuditLog
+	if err := svc.db.First(&disabledAudit, "entity_type = ? AND entity_id = ? AND action = ?", "continuous_profile", profileID, "continuous_profile_disabled").Error; err != nil {
+		t.Fatalf("expected disabled audit log: %v", err)
+	}
+
+	enableResp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles/"+profileID+"/enable", nil, http.StatusOK)
+	if got := enableResp["profile"].(map[string]any)["enabled"].(bool); !got {
+		t.Fatal("expected enabled profile")
+	}
+
+	var enabledAudit minidrop.AuditLog
+	if err := svc.db.First(&enabledAudit, "entity_type = ? AND entity_id = ? AND action = ?", "continuous_profile", profileID, "continuous_profile_enabled").Error; err != nil {
+		t.Fatalf("expected enabled audit log: %v", err)
+	}
+}
+
+func TestContinuousWindowFiltersScopeTimeline(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+
+	performJSON(t, router, http.MethodPost, "/api/v1/agents/heartbeat", map[string]any{
+		"agent_id": "agt_schedule_filter",
+		"hostname": "demo-host",
+		"ip":       "127.0.0.1",
+		"version":  "0.1.0",
+	}, http.StatusOK)
+
+	createResp := performJSON(t, router, http.MethodPost, "/api/v1/continuous-profiles", map[string]any{
+		"name":                "filtered windows",
+		"target_pid":          4321,
+		"target_agent_id":     "agt_schedule_filter",
+		"sample_duration_sec": 15,
+		"sample_rate_hz":      99,
+		"collector_type":      "mock-perf",
+		"interval_sec":        300,
+	}, http.StatusCreated)
+	profileID := createResp["profile"].(map[string]any)["id"].(string)
+
+	if err := svc.db.Where("profile_id = ?", profileID).Delete(&minidrop.ContinuousProfileWindow{}).Error; err != nil {
+		t.Fatalf("delete initial window: %v", err)
+	}
+
+	base := time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)
+	testWindows := []minidrop.ContinuousProfileWindow{
+		{
+			ID:            "cwin_filter_old_done",
+			ProfileID:     profileID,
+			TaskID:        "tsk_filter_old_done",
+			WindowStartAt: base,
+			WindowEndAt:   base.Add(5 * time.Minute),
+			Status:        minidrop.TaskStatusDone,
+			StatusReason:  "old done window",
+			CreatedAt:     base,
+			UpdatedAt:     base,
+		},
+		{
+			ID:            "cwin_filter_selected_done",
+			ProfileID:     profileID,
+			TaskID:        "tsk_filter_selected_done",
+			WindowStartAt: base.Add(10 * time.Minute),
+			WindowEndAt:   base.Add(15 * time.Minute),
+			Status:        minidrop.TaskStatusDone,
+			StatusReason:  "selected done window",
+			CreatedAt:     base,
+			UpdatedAt:     base,
+		},
+		{
+			ID:            "cwin_filter_failed",
+			ProfileID:     profileID,
+			TaskID:        "tsk_filter_failed",
+			WindowStartAt: base.Add(20 * time.Minute),
+			WindowEndAt:   base.Add(25 * time.Minute),
+			Status:        minidrop.TaskStatusFailed,
+			StatusReason:  "failed window",
+			CreatedAt:     base,
+			UpdatedAt:     base,
+		},
+	}
+	if err := svc.db.Create(&testWindows).Error; err != nil {
+		t.Fatalf("seed timeline windows: %v", err)
+	}
+
+	path := "/api/v1/continuous-profiles/" + profileID + "/windows?status=DONE&from=" +
+		base.Add(5*time.Minute).Format(time.RFC3339) + "&to=" +
+		base.Add(15*time.Minute).Format(time.RFC3339) + "&limit=10"
+	windowsResp := performJSON(t, router, http.MethodGet, path, nil, http.StatusOK)
+	windows := windowsResp["windows"].([]any)
+	if len(windows) != 1 {
+		t.Fatalf("expected 1 filtered window, got %d", len(windows))
+	}
+	window := windows[0].(map[string]any)
+	if got := window["id"].(string); got != "cwin_filter_selected_done" {
+		t.Fatalf("expected selected done window, got %s", got)
+	}
+	summary := windowsResp["summary"].(map[string]any)
+	if got := summary["total_windows"].(float64); got != 1 {
+		t.Fatalf("expected filtered total 1, got %v", got)
+	}
+	if got := summary["latest_status"].(string); got != string(minidrop.TaskStatusDone) {
+		t.Fatalf("expected latest done status, got %s", got)
+	}
+
+	performJSON(t, router, http.MethodGet, "/api/v1/continuous-profiles/"+profileID+"/windows?status=BOGUS", nil, http.StatusBadRequest)
+}
+
+func TestContinuousProfileTrendsAggregateTopNWindows(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+
+	profileID := "cprof_trend"
+	base := time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)
+	profile := minidrop.ContinuousProfile{
+		ID:                profileID,
+		Name:              "trend profile",
+		TargetPID:         4321,
+		TargetAgentID:     "agt_trend",
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "mock-perf",
+		WindowDurationSec: minidrop.ContinuousWindowDurationSec,
+		IntervalSec:       300,
+		Enabled:           true,
+		CreatedAt:         base,
+		UpdatedAt:         base,
+	}
+	if err := svc.db.Create(&profile).Error; err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+
+	windows := []minidrop.ContinuousProfileWindow{
+		{
+			ID:            "cwin_trend_new",
+			ProfileID:     profileID,
+			TaskID:        "tsk_trend_new",
+			WindowStartAt: base.Add(5 * time.Minute),
+			WindowEndAt:   base.Add(10 * time.Minute),
+			Status:        minidrop.TaskStatusDone,
+			StatusReason:  "new window complete",
+			CreatedAt:     base,
+			UpdatedAt:     base,
+		},
+		{
+			ID:            "cwin_trend_old",
+			ProfileID:     profileID,
+			TaskID:        "tsk_trend_old",
+			WindowStartAt: base,
+			WindowEndAt:   base.Add(5 * time.Minute),
+			Status:        minidrop.TaskStatusDone,
+			StatusReason:  "old window complete",
+			CreatedAt:     base,
+			UpdatedAt:     base,
+		},
+	}
+	if err := svc.db.Create(&windows).Error; err != nil {
+		t.Fatalf("create trend windows: %v", err)
+	}
+
+	for _, window := range windows {
+		task := minidrop.Task{
+			ID:                  window.TaskID,
+			TargetPID:           4321,
+			TargetAgentID:       "agt_trend",
+			SampleDurationSec:   15,
+			SampleRateHz:        99,
+			CollectorType:       "mock-perf",
+			ContinuousProfileID: profileID,
+			ContinuousWindowID:  window.ID,
+			Status:              minidrop.TaskStatusDone,
+			StatusReason:        "done",
+			CreatedAt:           window.CreatedAt,
+			UpdatedAt:           window.UpdatedAt,
+		}
+		if err := svc.db.Create(&task).Error; err != nil {
+			t.Fatalf("create task %s: %v", task.ID, err)
+		}
+	}
+
+	newTopNPath := writeTestTopN(t, svc, "tsk_trend_new", []hotspotPayload{
+		{Function: "main.expensiveLoop", Samples: 90, Percent: 70.0},
+		{Function: "runtime.mallocgc", Samples: 20, Percent: 15.0},
+	})
+	oldTopNPath := writeTestTopN(t, svc, "tsk_trend_old", []hotspotPayload{
+		{Function: "main.expensiveLoop", Samples: 40, Percent: 30.0},
+		{Function: "storage.writeArtifacts", Samples: 25, Percent: 42.0},
+	})
+
+	results := []minidrop.AnalysisResult{
+		{
+			ID:             "res_trend_new",
+			TaskID:         "tsk_trend_new",
+			FlamegraphPath: "tsk_trend_new/analysis/flamegraph.svg",
+			TopNPath:       newTopNPath,
+			Summary:        "new window",
+			CreatedAt:      base,
+			UpdatedAt:      base,
+		},
+		{
+			ID:             "res_trend_old",
+			TaskID:         "tsk_trend_old",
+			FlamegraphPath: "tsk_trend_old/analysis/flamegraph.svg",
+			TopNPath:       oldTopNPath,
+			Summary:        "old window",
+			CreatedAt:      base,
+			UpdatedAt:      base,
+		},
+	}
+	if err := svc.db.Create(&results).Error; err != nil {
+		t.Fatalf("create analysis results: %v", err)
+	}
+
+	resp := performJSON(t, router, http.MethodGet, "/api/v1/continuous-profiles/"+profileID+"/trends?limit=2", nil, http.StatusOK)
+	trendWindows := resp["windows"].([]any)
+	if len(trendWindows) != 2 {
+		t.Fatalf("expected 2 trend windows, got %d", len(trendWindows))
+	}
+	if got := trendWindows[0].(map[string]any)["window_id"].(string); got != "cwin_trend_new" {
+		t.Fatalf("expected newest window first, got %s", got)
+	}
+
+	series := resp["series"].([]any)
+	if len(series) == 0 {
+		t.Fatal("expected trend series")
+	}
+	first := series[0].(map[string]any)
+	if got := first["function"].(string); got != "main.expensiveLoop" {
+		t.Fatalf("expected expensive loop trend first, got %s", got)
+	}
+	if got := first["delta"].(float64); got != 40 {
+		t.Fatalf("expected delta 40, got %v", got)
+	}
+	if got := first["label"].(string); got != "持续高位" {
+		t.Fatalf("expected high trend label, got %s", got)
+	}
+	if got := first["severity"].(string); got != "critical" {
+		t.Fatalf("expected critical severity, got %s", got)
+	}
+	points := first["points"].([]any)
+	if got := points[0].(map[string]any)["percent"].(float64); got != 70 {
+		t.Fatalf("expected newest percent 70, got %v", got)
+	}
+
+	var storageSeries map[string]any
+	for _, item := range series {
+		seriesItem := item.(map[string]any)
+		if seriesItem["function"].(string) == "storage.writeArtifacts" {
+			storageSeries = seriesItem
+			break
+		}
+	}
+	if storageSeries == nil {
+		t.Fatalf("expected storage trend series, got %+v", series)
+	}
+	baseline := storageSeries["baseline"].(map[string]any)
+	if got := baseline["status"].(string); got != "above" {
+		t.Fatalf("expected storage trend above baseline, got %s", got)
+	}
+	if got := baseline["expected_percent"].(float64); got != 12 {
+		t.Fatalf("expected storage baseline 12, got %v", got)
+	}
+	if got := baseline["actual_percent"].(float64); got != 42 {
+		t.Fatalf("expected storage peak 42, got %v", got)
+	}
+	if got := baseline["delta_percent"].(float64); got != 30 {
+		t.Fatalf("expected storage baseline delta 30, got %v", got)
+	}
+
+	performJSON(t, router, http.MethodGet, "/api/v1/continuous-profiles/"+profileID+"/trends?limit=bogus", nil, http.StatusBadRequest)
+}
+
+func TestListTasksIncludesDoneTaskResultsForAggregation(t *testing.T) {
+	svc := newTestService(t)
+	router := svc.Router()
+	now := time.Now().UTC()
+	task := minidrop.Task{
+		ID:                "tsk_list_result",
+		TargetPID:         4321,
+		TargetAgentID:     "agt_list",
+		SampleDurationSec: 15,
+		SampleRateHz:      99,
+		CollectorType:     "mock-perf",
+		Status:            minidrop.TaskStatusDone,
+		StatusReason:      "done",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+	if err := svc.db.Create(&task).Error; err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	topNPath := writeTestTopN(t, svc, task.ID, []hotspotPayload{
+		{Function: "storage.writeArtifacts", Samples: 42, Percent: 42.0},
+	})
+	if err := svc.db.Create(&minidrop.AnalysisResult{
+		ID:             "res_list_result",
+		TaskID:         task.ID,
+		FlamegraphPath: "tsk_list_result/analysis/flamegraph.svg",
+		TopNPath:       topNPath,
+		Summary:        "done",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}).Error; err != nil {
+		t.Fatalf("create analysis result: %v", err)
+	}
+
+	resp := performJSON(t, router, http.MethodGet, "/api/v1/tasks", nil, http.StatusOK)
+	tasks := resp["tasks"].([]any)
+	if len(tasks) != 1 {
+		t.Fatalf("expected one task, got %d", len(tasks))
+	}
+	result := tasks[0].(map[string]any)["result"].(map[string]any)
+	hotspots := result["hotspots"].([]any)
+	if got := hotspots[0].(map[string]any)["function"].(string); got != "storage.writeArtifacts" {
+		t.Fatalf("expected list result hotspot, got %s", got)
+	}
+}
+
+func TestClassifyTrendUsesFineGrainedThresholds(t *testing.T) {
+	tests := []struct {
+		name         string
+		peak         float64
+		delta        float64
+		wantLabel    string
+		wantSeverity string
+	}{
+		{name: "critical high peak", peak: 50, delta: 0, wantLabel: "持续高位", wantSeverity: "critical"},
+		{name: "elevated peak", peak: 35, delta: 0, wantLabel: "基线偏高", wantSeverity: "warning"},
+		{name: "rising", peak: 20, delta: 15, wantLabel: "明显升高", wantSeverity: "warning"},
+		{name: "falling", peak: 20, delta: -15, wantLabel: "明显回落", wantSeverity: "success"},
+		{name: "minor change", peak: 20, delta: 8, wantLabel: "小幅波动", wantSeverity: "normal"},
+		{name: "stable", peak: 20, delta: 7.9, wantLabel: "平稳", wantSeverity: "normal"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			label, severity, reason := classifyTrend(tt.peak, tt.delta)
+			if label != tt.wantLabel {
+				t.Fatalf("expected label %s, got %s", tt.wantLabel, label)
+			}
+			if severity != tt.wantSeverity {
+				t.Fatalf("expected severity %s, got %s", tt.wantSeverity, severity)
+			}
+			if reason == "" {
+				t.Fatal("expected non-empty reason")
+			}
+		})
+	}
+}
+
+func writeTestTopN(t *testing.T, svc *Service, taskID string, hotspots []hotspotPayload) string {
+	t.Helper()
+	topNRelPath := filepath.ToSlash(filepath.Join(taskID, "analysis", "topn.json"))
+	topNAbsPath := filepath.Join(svc.cfg.ArtifactDir, filepath.FromSlash(topNRelPath))
+	if err := os.MkdirAll(filepath.Dir(topNAbsPath), 0o755); err != nil {
+		t.Fatalf("create topn dir: %v", err)
+	}
+	data, err := json.Marshal(hotspots)
+	if err != nil {
+		t.Fatalf("marshal topn: %v", err)
+	}
+	if err := os.WriteFile(topNAbsPath, data, 0o644); err != nil {
+		t.Fatalf("write topn: %v", err)
+	}
+	return topNRelPath
+}
+
+func writeTestResourceTimeline(t *testing.T, svc *Service, taskID string, timeline resourceTimelinePayload) string {
+	t.Helper()
+	timelineRelPath := filepath.ToSlash(filepath.Join(taskID, "analysis", "resource_timeline.json"))
+	timelineAbsPath := filepath.Join(svc.cfg.ArtifactDir, filepath.FromSlash(timelineRelPath))
+	if err := os.MkdirAll(filepath.Dir(timelineAbsPath), 0o755); err != nil {
+		t.Fatalf("create resource timeline dir: %v", err)
+	}
+	data, err := json.Marshal(timeline)
+	if err != nil {
+		t.Fatalf("marshal resource timeline: %v", err)
+	}
+	if err := os.WriteFile(timelineAbsPath, data, 0o644); err != nil {
+		t.Fatalf("write resource timeline: %v", err)
+	}
+	return timelineRelPath
 }
 
 func performJSON(t *testing.T, router http.Handler, method, path string, body any, expected int) map[string]any {
+	return performJSONWithHeaders(t, router, method, path, body, expected, nil)
+}
+
+func performJSONWithHeaders(t *testing.T, router http.Handler, method, path string, body any, expected int, headers map[string]string) map[string]any {
 	t.Helper()
 
 	var payload bytes.Buffer
@@ -532,6 +1467,9 @@ func performJSON(t *testing.T, router http.Handler, method, path string, body an
 
 	req := httptest.NewRequest(method, path, &payload)
 	req.Header.Set("Content-Type", "application/json")
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != expected {

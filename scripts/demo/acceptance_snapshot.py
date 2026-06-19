@@ -4,17 +4,33 @@ import sys
 import urllib.error
 import urllib.request
 
+from demo_diagnostics import missing_endpoint_hint, minio_signed_url_failure_hints, signed_url_ok
+from api_auth import auth_headers
+
 
 API_PORT = os.environ.get("MINIDROP_API_PORT", "8080")
 API_BASE = os.environ.get("MINIDROP_API_BASE_URL", f"http://127.0.0.1:{API_PORT}").rstrip("/")
-WEB_PORT = os.environ.get("MINIDROP_WEB_PORT", "4173")
+WEB_PORT = os.environ.get("MINIDROP_WEB_PORT", "80")
 MINIO_PORT = os.environ.get("MINIDROP_MINIO_PORT", "9000")
+TARGET_AGENT_ID = os.environ.get("MINIDROP_TARGET_AGENT_ID", "drop_agent")
+EXPECT_SINGLE_AGENT = os.environ.get("MINIDROP_EXPECT_SINGLE_AGENT", "0") == "1"
 
 
 def request_json(path: str) -> dict:
-    req = urllib.request.Request(f"{API_BASE}{path}", method="GET")
+    headers = {} if path == "/healthz" else auth_headers(API_BASE)
+    req = urllib.request.Request(f"{API_BASE}{path}", method="GET", headers=headers)
     with urllib.request.urlopen(req, timeout=10) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def request_optional_json(path: str, failures: list[str]) -> dict | None:
+    try:
+        return request_json(path)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            failures.append(missing_endpoint_hint(path, API_BASE))
+            return None
+        raise
 
 
 def check_url(url: str) -> tuple[bool, str]:
@@ -26,8 +42,15 @@ def check_url(url: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
-def signed_url_ok(url: str) -> bool:
-    return f"localhost:{MINIO_PORT}" in url and "X-Amz-Signature=" in url
+def schedule_summary(profile: dict) -> str:
+    mode = str(profile.get("schedule_mode") or "interval")
+    stagger = int(profile.get("stagger_sec") or 0)
+    suffix = f"+{stagger}s" if stagger else "no-stagger"
+    if mode == "cron":
+        expression = str(profile.get("cron_expression") or "-").replace(" ", "_")
+        return f"cron:{expression}:{suffix}"
+    interval = int(profile.get("interval_sec") or 0)
+    return f"interval:{interval}s:{suffix}"
 
 
 def main() -> int:
@@ -45,6 +68,10 @@ def main() -> int:
     online_agents = [agent for agent in agents if agent.get("status") == "ONLINE"]
     if not online_agents:
         failures.append("No ONLINE agent found")
+    if not any(agent.get("id") == TARGET_AGENT_ID and agent.get("status") == "ONLINE" for agent in agents):
+        failures.append(f"Expected {TARGET_AGENT_ID} to be ONLINE")
+    if EXPECT_SINGLE_AGENT and len(online_agents) != 1:
+        failures.append(f"Expected exactly one ONLINE agent, got {len(online_agents)}")
 
     tasks = request_json("/api/v1/tasks").get("tasks", [])
     done_tasks = [task for task in tasks if task.get("status") == "DONE"]
@@ -55,6 +82,7 @@ def main() -> int:
     comparable_count = 0
     signed_url_count = 0
     done_task_ids: list[str] = []
+    result_urls: list[str] = []
     for task in done_tasks[:5]:
         task_id = task.get("id")
         if not task_id:
@@ -67,13 +95,36 @@ def main() -> int:
             comparable_count += 1
         flamegraph_url = result.get("flamegraph_url") or ""
         topn_url = result.get("topn_url") or ""
-        if signed_url_ok(flamegraph_url) and signed_url_ok(topn_url):
+        result_urls.extend(url for url in [flamegraph_url, topn_url] if url)
+        if signed_url_ok(flamegraph_url, MINIO_PORT) and signed_url_ok(topn_url, MINIO_PORT):
             signed_url_count += 1
 
     if signed_url_count == 0:
         failures.append(f"No DONE task has MinIO signed flamegraph/topn URLs on localhost:{MINIO_PORT}")
+        failures.extend(minio_signed_url_failure_hints(agents, result_urls, MINIO_PORT, API_BASE, WEB_PORT))
     if comparable_count < 2:
         failures.append("Task comparison needs at least two DONE tasks with TopN hotspots")
+
+    profiles_payload = request_optional_json("/api/v1/continuous-profiles", failures) or {}
+    profiles = profiles_payload.get("profiles", [])
+    enabled_profiles = [profile for profile in profiles if profile.get("enabled")]
+    trend_ready_profiles = 0
+    profile_summaries: list[str] = []
+    for profile in profiles[:5]:
+        profile_id = profile.get("id")
+        if not profile_id:
+            continue
+        windows_payload = request_optional_json(
+            f"/api/v1/continuous-profiles/{profile_id}/windows?limit=24", failures
+        ) or {}
+        summary = windows_payload.get("summary") or {}
+        trend = request_optional_json(f"/api/v1/continuous-profiles/{profile_id}/trends?limit=12", failures) or {}
+        series = trend.get("series") or []
+        if series:
+            trend_ready_profiles += 1
+        profile_summaries.append(
+            f"{profile_id}:{schedule_summary(profile)}:{summary.get('done_windows', 0)}/{summary.get('total_windows', 0)}:{summary.get('latest_status', '-')}:trends={len(series)}"
+        )
 
     print("Mini-Drop acceptance snapshot")
     print(f"api={API_BASE} health={health.get('status')}")
@@ -82,6 +133,8 @@ def main() -> int:
     print(f"tasks_done={len(done_tasks)} tasks_failed={len(failed_tasks)} sampled_done={','.join(done_task_ids)}")
     print(f"minio_signed_results={signed_url_count}")
     print(f"compare_ready_tasks={comparable_count}")
+    print(f"continuous_profiles={len(profiles)} enabled={len(enabled_profiles)} trend_ready={trend_ready_profiles}")
+    print(f"continuous_profile_samples={','.join(profile_summaries) if profile_summaries else '-'}")
 
     if failures:
         print("acceptance=FAILED")

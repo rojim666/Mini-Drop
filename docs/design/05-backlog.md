@@ -57,6 +57,7 @@ be finished before lower items are started.
 ## P1: Real perf Collector
 
 - [ ] Validate Linux runtime permissions.
+- [x] Write a repeatable WSL2 / Linux real-collector preflight report.
 - [x] Check `perf` availability.
 - [x] Detect `perf_event_paranoid`.
 - [x] Implement `perf record`.
@@ -74,6 +75,8 @@ be finished before lower items are started.
 - [x] Add MinIO object storage and signed artifact URLs.
 - [x] Add compose-side readiness checks for Postgres and Web.
 - [x] Write one-click demo docs for compose and WSL2 flows.
+- [x] Add final demo script for recording and live review.
+- [x] Add final preflight report for the recording gate.
 
 ## P1: Observability
 
@@ -126,3 +129,5 @@ be finished before lower items are started.
 - [x] Implement attribution prompt and tool loop.
 - [x] Store attribution result with evidence.
 - [x] Write small evaluation report.
+- [x] Add analyzer-backed structured resource timeline evidence.
+- [x] Expand attribution evaluation samples and generated scoring report.

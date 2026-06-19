@@ -13,6 +13,7 @@ GO_VERSION="${GO_VERSION:-1.25.5}"
 TOOLCHAIN_DIR="$ROOT/tmp/toolchains"
 WEB_APP_DIR="$ROOT/apps/web"
 WEB_RUNTIME_DIR="$ROOT/tmp/web-runtime"
+AUTH_TOKEN=""
 
 require_command() {
   local name="$1"
@@ -203,17 +204,52 @@ wait_api_ready() {
   return 1
 }
 
+login_token() {
+  python3 - "$API_ADDR" <<'PY'
+import json
+import os
+import sys
+import urllib.request
+
+api_addr = sys.argv[1]
+body = {
+    "username": os.environ.get("MINIDROP_AUTH_USERNAME", "demo"),
+    "password": os.environ.get("MINIDROP_AUTH_PASSWORD", "minidrop"),
+    "tenant": os.environ.get("MINIDROP_AUTH_TENANT", "local-demo"),
+    "region": os.environ.get("MINIDROP_AUTH_REGION", "local"),
+}
+request = urllib.request.Request(
+    f"http://{api_addr}/api/v1/auth/login",
+    method="POST",
+    data=json.dumps(body).encode("utf-8"),
+    headers={"Content-Type": "application/json"},
+)
+with urllib.request.urlopen(request, timeout=5) as response:
+    payload = json.loads(response.read().decode("utf-8"))
+token = str(payload.get("token") or "")
+if not token:
+    raise SystemExit("API login did not return a token")
+print(token)
+PY
+}
+
 wait_agent_ready() {
   local agent_id="${MINIDROP_AGENT_ID:-agt_local}"
   local deadline=$((SECONDS + 30))
   while (( SECONDS < deadline )); do
-    if python3 - "$API_ADDR" "$agent_id" <<'PY' >/dev/null 2>&1
+    if MINIDROP_AUTH_TOKEN="$AUTH_TOKEN" python3 - "$API_ADDR" "$agent_id" <<'PY' >/dev/null 2>&1
 import json
+import os
 import sys
 import urllib.request
 
 api_addr, agent_id = sys.argv[1], sys.argv[2]
-with urllib.request.urlopen(f"http://{api_addr}/api/v1/agents", timeout=2) as response:
+token = os.environ["MINIDROP_AUTH_TOKEN"]
+request = urllib.request.Request(
+    f"http://{api_addr}/api/v1/agents",
+    headers={"Authorization": f"Bearer {token}"},
+)
+with urllib.request.urlopen(request, timeout=2) as response:
     agents = json.loads(response.read().decode("utf-8"))["agents"]
 for agent in agents:
     if agent["id"] == agent_id and agent["status"] == "ONLINE":
@@ -250,6 +286,7 @@ start_demo_process api env \
   go run ./apps/api-server
 
 wait_api_ready
+AUTH_TOKEN="$(login_token)"
 
 start_demo_process agent env \
   MINIDROP_API_BASE_URL="http://${API_ADDR}" \
@@ -271,6 +308,7 @@ start_demo_process web env \
 echo
 echo "Mini-Drop local demo is starting."
 echo "Web UI: http://localhost:${WEB_PORT}"
+echo "Login:  demo / minidrop"
 echo "API:    http://${API_ADDR}/healthz"
 echo "Logs:   $LOG_DIR"
 echo

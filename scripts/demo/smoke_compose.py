@@ -6,10 +6,12 @@ import urllib.error
 import urllib.request
 from argparse import ArgumentParser
 
+from api_auth import auth_headers
+
 
 API_PORT = os.environ.get("MINIDROP_API_PORT", "8080")
 API_BASE = os.environ.get("MINIDROP_API_BASE_URL", f"http://127.0.0.1:{API_PORT}").rstrip("/")
-DEFAULT_AGENT_ID = os.environ.get("MINIDROP_TARGET_AGENT_ID", "agt_compose")
+DEFAULT_AGENT_ID = os.environ.get("MINIDROP_TARGET_AGENT_ID", "drop_agent")
 DEFAULT_TARGET_PID = int(os.environ.get("MINIDROP_TARGET_PID", "1"))
 DEFAULT_MINIO_PORT = os.environ.get("MINIDROP_MINIO_PORT", "9000")
 
@@ -30,7 +32,7 @@ def parse_args() -> object:
 
 def request_json(path: str, method: str = "GET", body: dict | None = None) -> dict:
     data = None
-    headers = {}
+    headers = {} if path == "/healthz" else auth_headers(API_BASE)
     if body is not None:
         data = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json"

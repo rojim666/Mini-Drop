@@ -17,7 +17,7 @@ ENV MINIDROP_DATA_DIR=/app/data
 ENV MINIDROP_DB_DRIVER=sqlite
 ENV MINIDROP_DB_PATH=/app/data/mini-drop.db
 ENV MINIDROP_ARTIFACT_DIR=/app/artifacts
-ENV MINIDROP_ALLOWED_ORIGIN=http://localhost:4173,http://127.0.0.1:4173
+ENV MINIDROP_ALLOWED_ORIGIN=http://localhost,http://127.0.0.1
 
 EXPOSE 8080
 CMD ["/app/mini-drop-api"]

@@ -29,6 +29,9 @@ type Service struct {
 	router  *gin.Engine
 	log     *slog.Logger
 	storage *artifactStorage
+	aiMu    sync.RWMutex
+	aiState aiRuntimeState
+	ai      *aiAttributionClient
 	once    sync.Once
 }
 
@@ -66,6 +69,7 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 		&minidrop.AnalysisResult{},
 		&minidrop.AttributionBaseline{},
 		&minidrop.AttributionResult{},
+		&minidrop.AppSetting{},
 		&minidrop.ContinuousProfile{},
 		&minidrop.ContinuousProfileWindow{},
 	); err != nil {
@@ -75,12 +79,20 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 		return nil, fmt.Errorf("seed attribution baselines: %w", err)
 	}
 
+	aiState, err := loadAIState(sqlDB, defaultAIState(cfg))
+	if err != nil {
+		return nil, fmt.Errorf("load ai settings: %w", err)
+	}
+	aiClient := newAIAttributionClient(aiConfigFromState(aiState))
+
 	gin.SetMode(gin.ReleaseMode)
 	service := &Service{
 		cfg:     cfg,
 		db:      sqlDB,
 		log:     slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})),
 		storage: storage,
+		aiState: aiState,
+		ai:      aiClient,
 	}
 	service.router = service.newRouter()
 	service.startBackground(ctx)
@@ -138,6 +150,19 @@ func (s *Service) Close() error {
 		err = sqlDB.Close()
 	})
 	return err
+}
+
+func (s *Service) currentAIState() aiRuntimeState {
+	s.aiMu.RLock()
+	defer s.aiMu.RUnlock()
+	return s.aiState
+}
+
+func (s *Service) setAIState(state aiRuntimeState) {
+	s.aiMu.Lock()
+	defer s.aiMu.Unlock()
+	s.aiState = state
+	s.ai = newAIAttributionClient(aiConfigFromState(state))
 }
 
 func (s *Service) Router() *gin.Engine {
@@ -286,6 +311,19 @@ func mustReadTopN(absPath string) ([]hotspotPayload, error) {
 		return nil, err
 	}
 	return hotspots, nil
+}
+
+func mustReadResourceTimeline(absPath string) (*resourceTimelinePayload, error) {
+	payload, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var timeline resourceTimelinePayload
+	if err := decodeJSON(payload, &timeline); err != nil {
+		return nil, err
+	}
+	return &timeline, nil
 }
 
 func dbConn(db *gorm.DB) (*sql.DB, error) {

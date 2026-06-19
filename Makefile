@@ -1,4 +1,4 @@
-.PHONY: help demo demo-up demo-down local local-down test build web-build docs-check smoke-local smoke-real smoke-demo smoke-demo-minio smoke-demo-fail smoke-demo-offline acceptance-snapshot real-check perf-check ebpf-check pyspy-check
+.PHONY: help demo demo-up demo-down local local-down test build web-build coverage attribution-evaluation docs-check smoke-local smoke-real smoke-demo smoke-demo-minio smoke-demo-fail smoke-demo-offline compose-health acceptance-snapshot demo-evidence recording-checklist submission-notes capture-submission-artifacts final-preflight real-preflight real-check real-smoke-report perf-check ebpf-check pyspy-check
 
 help:
 	@echo "Mini-Drop commands:"
@@ -9,10 +9,20 @@ help:
 	@echo "  make smoke-demo-minio  Verify Docker Compose signed artifact URLs"
 	@echo "  make smoke-demo-fail  Verify Docker Compose PID failure path"
 	@echo "  make smoke-demo-offline  Verify Docker Compose agent offline path"
+	@echo "  make compose-health  Verify Docker Compose services and host port mappings"
 	@echo "  make acceptance-snapshot  Print compose demo acceptance evidence"
+	@echo "  make demo-evidence  Write artifacts/demo-evidence.md from live demo state"
+	@echo "  make recording-checklist  Write artifacts/recording-checklist.md"
+	@echo "  make submission-notes  Write artifacts/submission-notes.md"
+	@echo "  make capture-submission-artifacts  Capture submission PNG evidence"
+	@echo "  make final-preflight  Run the final demo preflight and write artifacts/final-preflight.md"
+	@echo "  make real-preflight  Write artifacts/real-collector-preflight.md from WSL/Linux checks"
+	@echo "  make real-smoke-report  Write artifacts/real-smoke-report.md from WSL/Linux smoke checks"
 	@echo "  make local       Start the local Linux/WSL demo stack"
 	@echo "  make local-down  Stop the local Linux/WSL demo stack"
 	@echo "  make test        Run Go tests"
+	@echo "  make coverage    Write artifacts/coverage-report.md and enforce required coverage gates"
+	@echo "  make attribution-evaluation  Write artifacts/attribution-evaluation-report.md"
 	@echo "  make build       Build Go binaries and the web app"
 	@echo "  make web-build   Build the web app only"
 	@echo "  make smoke-local Run the local smoke helper against a PID"
@@ -44,8 +54,32 @@ smoke-demo-fail:
 smoke-demo-offline:
 	@powershell -NoProfile -Command "$$apiPort = if ($$env:MINIDROP_API_PORT) { $$env:MINIDROP_API_PORT } else { '8080' }; $$env:MINIDROP_API_BASE_URL = if ($$env:MINIDROP_API_BASE_URL) { $$env:MINIDROP_API_BASE_URL } else { \"http://127.0.0.1:$$apiPort\" }; python scripts\\demo\\smoke_agent_offline.py"
 
+compose-health:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\check-compose-stack.ps1
+
 acceptance-snapshot:
 	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\acceptance-snapshot.ps1
+
+demo-evidence:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\write-demo-evidence.ps1
+
+recording-checklist:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\write-recording-checklist.ps1
+
+submission-notes:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\write-submission-notes.ps1
+
+capture-submission-artifacts:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\capture-submission-artifacts.ps1
+
+final-preflight:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\final-preflight.ps1
+
+real-preflight:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\prepare-real-collectors.ps1
+
+real-smoke-report:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\demo\\write-real-smoke-report.ps1
 
 perf-check:
 	@powershell -NoProfile -Command "if ($$env:MINIDROP_TARGET_PID) { python scripts\\demo\\check_perf_env.py --pid $$env:MINIDROP_TARGET_PID } else { python scripts\\demo\\check_perf_env.py }"
@@ -69,6 +103,12 @@ test:
 	@powershell -NoProfile -Command "$$env:GOPROXY='https://goproxy.cn,direct'; go test ./apps/api-server ./apps/agent ./internal/..."
 	@powershell -NoProfile -Command "python -m unittest apps.analyzer.main_test"
 
+coverage:
+	@powershell -NoProfile -Command "$$env:GOPROXY='https://goproxy.cn,direct'; python scripts\\demo\\check_coverage.py"
+
+attribution-evaluation:
+	@powershell -NoProfile -Command "python scripts\\demo\\write_attribution_evaluation.py"
+
 build: web-build
 	@powershell -NoProfile -Command "$$env:GOPROXY='https://goproxy.cn,direct'; go build ./apps/api-server ./apps/agent"
 
@@ -91,4 +131,5 @@ docs-check:
 	@test -f docs/design/06-next-implementation.md
 	@test -f docs/design/07-attribution-evaluation.md
 	@test -f docs/demo-runbook.md
+	@test -f docs/demo-script.md
 	@echo "Required docs exist."

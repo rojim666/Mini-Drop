@@ -41,9 +41,10 @@ type taskEnvelope struct {
 }
 
 type analyzerResult struct {
-	FlamegraphPath string `json:"flamegraph_path"`
-	TopNPath       string `json:"topn_path"`
-	Summary        string `json:"summary"`
+	FlamegraphPath       string `json:"flamegraph_path"`
+	TopNPath             string `json:"topn_path"`
+	ResourceTimelinePath string `json:"resource_timeline_path"`
+	Summary              string `json:"summary"`
 }
 
 func New(cfg Config) (*Service, error) {
@@ -219,11 +220,12 @@ func (s *Service) processTask(ctx context.Context, task apiTask) error {
 	)
 
 	if err := s.postJSON(ctx, "/api/v1/internal/tasks/"+task.ID+"/complete", map[string]string{
-		"reason":            "artifact uploaded and flamegraph generated",
-		"raw_artifact_path": rawRelPath,
-		"flamegraph_path":   result.FlamegraphPath,
-		"topn_path":         result.TopNPath,
-		"summary":           result.Summary,
+		"reason":                 "artifact uploaded and flamegraph generated",
+		"raw_artifact_path":      rawRelPath,
+		"flamegraph_path":        result.FlamegraphPath,
+		"topn_path":              result.TopNPath,
+		"resource_timeline_path": result.ResourceTimelinePath,
+		"summary":                result.Summary,
 	}, nil); err != nil {
 		return err
 	}

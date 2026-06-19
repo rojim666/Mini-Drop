@@ -123,7 +123,7 @@ go test ./apps/api-server ./apps/agent ./internal/...
 
 ```powershell
 .\scripts\demo\start-compose.ps1
-python scripts\demo\smoke_compose.py --pid 1 --agent-id agt_compose --expect-minio-url
+python scripts\demo\smoke_compose.py --pid 1 --agent-id drop_agent --expect-minio-url
 ```
 
 ## 阶段 6：eBPF 扩展
@@ -185,14 +185,22 @@ make smoke-real COLLECTOR_TYPE=py-spy
 - API 创建 profile 和 window。
 - 每个到期 window materialize 为普通 task。
 - 结果复用原有 Agent、Analyzer、火焰图、TopN 和归因展示。
+- API 返回最近 24 个窗口的聚合摘要：总数、完成数、失败数、活跃数、等待数、最新状态和完成率。
+- Web 在窗口时间轴表格上方展示摘要，便于 demo 评审快速判断持续采样健康度。
+- API 支持按 `status`、`from`、`to`、`limit` 筛选窗口列表，Web 提供状态、时间范围和显示数量筛选。
+- Web 提供可点击窗口时间轴条，点击任一窗口可回溯到其 materialized task 详情。
+- API 聚合最近完成窗口的 TopN 热点趋势，Web 在计划页展示跨窗口函数占比、峰值和变化量。
+- API 为趋势结果补充确定性自动标注与原因，Web 直接标出持续高位、基线偏高、升高、回落、小幅波动或平稳。
+- API 为趋势结果接入 seeded baseline 对比，Web 直接展示基线偏差。
+- API 和 Web 支持 continuous profile 启用/停用，并写入审计日志，停用后不再调度新窗口。
+- API 对未指定目标机器的任务和 continuous profile 使用最少活跃任务优先的自动 Agent 调度策略。
+- API 和 Web 支持 interval / cron 两种 continuous profile 调度方式，并支持秒级错峰窗口，Agent 只领取已到 `window_start_at` 的窗口任务。
 
-当前状态：已完成最小版。
-
-下一步增强：
-
-- 增加更完整的调度策略。
-- 增加窗口聚合和 baseline 对比。
-- 支持按时间轴浏览多个窗口。
+当前状态：已完成最小版，并补齐窗口聚合摘要、筛选、可点击时间轴、跨窗口热点趋势、细粒度自动标注、baseline 对比、profile 生命周期控制、cron 表达式和错峰窗口策略。
+任务对比页已补充最小跨任务热点聚合视图，用于查看已完成任务中的重复热点、覆盖任务数、平均占比和峰值。
+任务对比页已补充最小跨 profile 聚合视图，用于区分跨连续计划反复出现的热点和单计划异常。
+调度策略已补齐最小版：自动目标选择会优先分配给活跃任务数更少的在线 Agent。
+调度表达式当前由内置轻量解析器支持常见五字段 cron、`@every` 和错峰秒数；后续如需完整生产级 cron 方言，可替换为专用 cron 库并保留现有 API 字段。
 
 ## 阶段 9：智能归因
 
@@ -205,16 +213,15 @@ make smoke-real COLLECTOR_TYPE=py-spy
 - Analyzer / API 读取 TopN。
 - 匹配热点规则。
 - 与 baseline 样例对比。
-- 输出 conclusion、confidence、evidence、recommendations、source、tool trace。
+- 输出 conclusion、confidence、evidence、recommendations、source、resource timeline、tool trace。
 - Web `归因建议` tab 展示完整证据链。
 
-当前状态：规则驱动版本已完成。
+当前状态：规则驱动版本、analyzer 资源时间线 artifact、6 个评测样例和评分报告已完成。`perf` 分析会从 `perf script` 采样时间戳聚合 `resource_timeline.json`，mock/eBPF/py-spy 复用同一结构化契约。
 
 下一步增强：
 
-- 接入真实资源时间线。
 - 接入远程 LLM，但只允许它调用结构化工具。
-- 扩充评测样例和评分报告。
+- 将评测报告与远程 LLM 版本对齐，确保 LLM 只能在同一证据边界内改写结论。
 
 ## 当前下一步
 
@@ -224,7 +231,10 @@ make smoke-real COLLECTOR_TYPE=py-spy
 2. 跑通至少 `perf` 的真实 smoke：`make smoke-real COLLECTOR_TYPE=perf`。
 3. 尽量跑通 `ebpf-syscall` 和 `py-spy` 的真实 smoke。
 4. 继续打磨 Web 控制台风格和演示路径。
-5. 补最终演示脚本、截图和提交说明。
+5. 按 `docs/demo-script.md` 录制最终演示，并补截图和提交说明。
+6. 录制前运行 `make final-preflight`，用 `artifacts/final-preflight.md` 汇总静态检查、自动测试、验收快照和交付材料生成状态。
+7. 在真实 smoke 前运行 `make real-preflight`，用 `artifacts/real-collector-preflight.md` 固化 WSL2/Linux 依赖、权限和下一步安装命令。
+8. 运行 `make attribution-evaluation`，用 `artifacts/attribution-evaluation-report.md` 固化智能归因样例评分。
 
 ## 两周交付排期
 
@@ -242,8 +252,8 @@ make smoke-real COLLECTOR_TYPE=py-spy
 | D10 | 异常路径和集成测试 | 完成 |
 | D11 | eBPF 采集器 | 代码完成，待 Linux 验证 |
 | D12 | Continuous Profiling 最小版 | 完成 |
-| D13 | 用户态采集器和智能归因 | 完成最小版 |
-| D14 | README、runbook、演示脚本、录屏准备 | 进行中 |
+| D13 | 用户态采集器和智能归因 | 完成最小版，归因评分报告已补 |
+| D14 | README、runbook、演示脚本、录屏准备 | 演示脚本、录制清单、提交说明模板、final preflight 和 real collector preflight 报告已补，最终人工录屏待完成 |
 
 ## Commit 规则
 

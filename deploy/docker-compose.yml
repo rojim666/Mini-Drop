@@ -31,28 +31,29 @@ services:
       - "${MINIDROP_MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - mini_drop_minio:/data
-
-  demo-target:
-    image: python:3.12-slim
-    command:
-      - python
-      - -u
-      - -c
-      - |
-        import math
-        import time
-        x = 0.0
-        while True:
-            x = math.sin(x + 0.5)
-            time.sleep(0.01)
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://127.0.0.1:9000/minio/health/ready
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
 
   api-server:
     build:
       context: ..
       dockerfile: apps/api-server/Dockerfile
     environment:
-      MINIDROP_ALLOWED_ORIGIN: http://localhost:${MINIDROP_WEB_PORT:-4173},http://127.0.0.1:${MINIDROP_WEB_PORT:-4173}
+      MINIDROP_ALLOWED_ORIGIN: http://localhost,http://127.0.0.1,http://localhost:${MINIDROP_WEB_PORT:-80},http://127.0.0.1:${MINIDROP_WEB_PORT:-80}
       MINIDROP_API_ADDR: 0.0.0.0:8080
+      MINIDROP_AUTH_ENABLED: ${MINIDROP_AUTH_ENABLED:-true}
+      MINIDROP_AUTH_USERNAME: ${MINIDROP_AUTH_USERNAME:-demo}
+      MINIDROP_AUTH_PASSWORD: ${MINIDROP_AUTH_PASSWORD:-minidrop}
+      MINIDROP_AUTH_TOKEN_SECRET: ${MINIDROP_AUTH_TOKEN_SECRET:-mini-drop-demo-secret}
+      MINIDROP_AUTH_SESSION_TTL_SEC: ${MINIDROP_AUTH_SESSION_TTL_SEC:-28800}
       MINIDROP_DB_DRIVER: postgres
       MINIDROP_POSTGRES_DSN: host=postgres user=postgres password=dev dbname=mini_drop sslmode=disable
       MINIDROP_ARTIFACT_DIR: /app/artifacts
@@ -65,6 +66,12 @@ services:
       MINIDROP_MINIO_REGION: us-east-1
       MINIDROP_MINIO_USE_SSL: "false"
       MINIDROP_MINIO_PRESIGN_TTL_SEC: 900
+      MINIDROP_AGENT_ALLOWLIST: drop_agent
+      MINIDROP_AI_ENABLED: ${MINIDROP_AI_ENABLED:-}
+      MINIDROP_AI_BASE_URL: ${MINIDROP_AI_BASE_URL:-https://api.openai.com/v1}
+      MINIDROP_AI_API_KEY: ${MINIDROP_AI_API_KEY:-}
+      MINIDROP_AI_MODEL: ${MINIDROP_AI_MODEL:-gpt-4o-mini}
+      MINIDROP_AI_TIMEOUT_SEC: ${MINIDROP_AI_TIMEOUT_SEC:-20}
       MINIDROP_OFFLINE_AFTER_SEC: ${MINIDROP_OFFLINE_AFTER_SEC:-30}
       MINIDROP_OFFLINE_SCAN_SEC: ${MINIDROP_OFFLINE_SCAN_SEC:-10}
     ports:
@@ -73,7 +80,7 @@ services:
       postgres:
         condition: service_healthy
       minio:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - mini_drop_artifacts:/app/artifacts
     healthcheck:
@@ -96,20 +103,29 @@ services:
     depends_on:
       api-server:
         condition: service_healthy
-      demo-target:
-        condition: service_started
     environment:
       MINIDROP_API_BASE_URL: http://api-server:8080
-      MINIDROP_AGENT_ID: agt_compose
-      MINIDROP_AGENT_HOSTNAME: compose-agent
-      MINIDROP_AGENT_IP: demo-target
+      MINIDROP_AGENT_ID: drop_agent
+      MINIDROP_AGENT_HOSTNAME: drop-agent
+      MINIDROP_AGENT_IP: ${MINIDROP_AGENT_IP:-127.0.0.1}
       MINIDROP_AGENT_VERSION: 0.1.0
       MINIDROP_PYTHON_BIN: python
       MINIDROP_ANALYZER_SCRIPT: /app/analyzer/main.py
       MINIDROP_ARTIFACT_DIR: /app/artifacts
-    pid: service:demo-target
+    pid: host
+    privileged: true
     volumes:
       - mini_drop_artifacts:/app/artifacts
+    healthcheck:
+      test:
+        - CMD
+        - /bin/sh
+        - -c
+        - for f in /proc/[0-9]*/cmdline; do tr '\0' ' ' < "$$f" | grep -q /app/mini-drop-agent && exit 0; done; exit 1
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
   web:
     build:
@@ -121,7 +137,7 @@ services:
       api-server:
         condition: service_healthy
     ports:
-      - "${MINIDROP_WEB_PORT:-4173}:80"
+      - "${MINIDROP_WEB_PORT:-80}:80"
     healthcheck:
       test:
         - CMD
